@@ -1,0 +1,21 @@
+{
+  "ConnectionStrings": {
+    "DefaultConnection": "Data Source=localhost;Initial Catalog=CarTechAssist;Persist Security Info=True;User ID=sa;Password=SUA_SENHA_AQUI;Encrypt=False"
+  },
+  "Jwt": {
+    "SecretKey": "SUA_CHAVE_SECRETA_JWT_MINIMO_32_CARACTERES_AQUI",
+    "Issuer": "CarTechAssist",
+    "Audience": "CarTechAssist"
+  },
+  "Logging": {
+    "LogLevel": {
+      "Default": "Debug",
+      "Microsoft.AspNetCore": "Information",
+      "Microsoft.EntityFrameworkCore": "Information"
+    }
+  },
+  "AllowedHosts": "*",
+  "Cors": {
+    "AllowedOrigins": "http://localhost:3000;http://localhost:5173"
+  }
+}

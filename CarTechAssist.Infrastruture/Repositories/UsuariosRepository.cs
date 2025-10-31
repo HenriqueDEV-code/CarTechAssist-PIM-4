@@ -1,0 +1,156 @@
+using System.Data;
+using Dapper;
+using CarTechAssist.Domain.Entities;
+using CarTechAssist.Domain.Interfaces;
+
+namespace CarTechAssist.Infrastruture.Repositories
+{
+    public class UsuariosRepository : IUsuariosRepository
+    {
+        private readonly IDbConnection _db;
+
+        public UsuariosRepository(IDbConnection db)
+        {
+            _db = db;
+        }
+
+        public async Task<Usuario?> ObterPorLoginAsync(int tenantId, string login, CancellationToken ct)
+        {
+            const string sql = @"
+                SELECT * FROM core.Usuario 
+                WHERE TenantId = @tenantId AND Login = @login AND Excluido = 0";
+
+            return await _db.QueryFirstOrDefaultAsync<Usuario>(
+                new CommandDefinition(sql, new { tenantId, login }, cancellationToken: ct));
+        }
+
+        public async Task<Usuario?> ObterPorIdAsync(int usuarioId, CancellationToken ct)
+        {
+            const string sql = @"
+                SELECT * FROM core.Usuario 
+                WHERE UsuarioId = @usuarioId AND Excluido = 0";
+
+            return await _db.QueryFirstOrDefaultAsync<Usuario>(
+                new CommandDefinition(sql, new { usuarioId }, cancellationToken: ct));
+        }
+
+        public async Task<(IReadOnlyList<Usuario> Items, int Total)> ListarAsync(
+            int tenantId,
+            byte? tipoUsuarioId,
+            bool? ativo,
+            int page,
+            int pageSize,
+            CancellationToken ct)
+        {
+            var offset = (page - 1) * pageSize;
+
+            var whereConditions = new List<string> { "TenantId = @tenantId", "Excluido = 0" };
+            var parameters = new DynamicParameters();
+            parameters.Add("tenantId", tenantId);
+            parameters.Add("offset", offset);
+            parameters.Add("pageSize", pageSize);
+
+            if (tipoUsuarioId.HasValue)
+            {
+                whereConditions.Add("TipoUsuarioId = @tipoUsuarioId");
+                parameters.Add("tipoUsuarioId", tipoUsuarioId.Value);
+            }
+
+            if (ativo.HasValue)
+            {
+                whereConditions.Add("Ativo = @ativo");
+                parameters.Add("ativo", ativo.Value);
+            }
+
+            var whereClause = string.Join(" AND ", whereConditions);
+
+            var sql = $@"
+                SELECT * FROM core.Usuario 
+                WHERE {whereClause}
+                ORDER BY NomeCompleto
+                OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY;
+
+                SELECT COUNT(*) FROM core.Usuario 
+                WHERE {whereClause}";
+
+            using var multi = await _db.QueryMultipleAsync(
+                new CommandDefinition(sql, parameters, cancellationToken: ct));
+
+            var items = (await multi.ReadAsync<Usuario>()).ToList();
+            var total = await multi.ReadSingleAsync<int>();
+
+            return (items, total);
+        }
+
+        public async Task<Usuario> CriarAsync(Usuario usuario, CancellationToken ct)
+        {
+            const string sql = @"
+                INSERT INTO core.Usuario 
+                    (TenantId, TipoUsuarioId, Login, NomeCompleto, Email, Telefone, 
+                     HashSenha, SaltSenha, PrecisaTrocarSenha, Ativo, DataCriacao, Excluido)
+                VALUES 
+                    (@TenantId, @TipoUsuarioId, @Login, @NomeCompleto, @Email, @Telefone,
+                     @HashSenha, @SaltSenha, @PrecisaTrocarSenha, @Ativo, @DataCriacao, @Excluido);
+                SELECT CAST(SCOPE_IDENTITY() as int);";
+
+            var usuarioId = await _db.QuerySingleAsync<int>(
+                new CommandDefinition(sql, usuario, cancellationToken: ct));
+
+            usuario.UsuarioId = usuarioId;
+            return usuario;
+        }
+
+        public async Task<Usuario> AtualizarAsync(Usuario usuario, CancellationToken ct)
+        {
+            const string sql = @"
+                UPDATE core.Usuario 
+                SET NomeCompleto = @NomeCompleto,
+                    Email = @Email,
+                    Telefone = @Telefone,
+                    TipoUsuarioId = @TipoUsuarioId,
+                    DataAtualizacao = @DataAtualizacao
+                WHERE UsuarioId = @UsuarioId AND Excluido = 0";
+
+            await _db.ExecuteAsync(
+                new CommandDefinition(sql, usuario, cancellationToken: ct));
+
+            return usuario;
+        }
+
+        public async Task AlterarAtivacaoAsync(int usuarioId, bool ativo, CancellationToken ct)
+        {
+            const string sql = @"
+                UPDATE core.Usuario 
+                SET Ativo = @ativo
+                WHERE UsuarioId = @usuarioId AND Excluido = 0";
+
+            await _db.ExecuteAsync(
+                new CommandDefinition(sql, new { usuarioId, ativo }, cancellationToken: ct));
+        }
+
+        public async Task AtualizarSenhaAsync(int usuarioId, byte[] hash, byte[] salt, CancellationToken ct)
+        {
+            const string sql = @"
+                UPDATE core.Usuario 
+                SET HashSenha = @hash,
+                    SaltSenha = @salt,
+                    PrecisaTrocarSenha = 0
+                WHERE UsuarioId = @usuarioId AND Excluido = 0";
+
+            await _db.ExecuteAsync(
+                new CommandDefinition(sql, new { usuarioId, hash, salt }, cancellationToken: ct));
+        }
+
+        public async Task<bool> ExisteLoginAsync(int tenantId, string login, CancellationToken ct)
+        {
+            const string sql = @"
+                SELECT COUNT(*) FROM core.Usuario 
+                WHERE TenantId = @tenantId AND Login = @login AND Excluido = 0";
+
+            var count = await _db.QuerySingleAsync<int>(
+                new CommandDefinition(sql, new { tenantId, login }, cancellationToken: ct));
+
+            return count > 0;
+        }
+    }
+}

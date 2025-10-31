@@ -1,0 +1,365 @@
+﻿<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] - CarTechAssist</title>
+    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/CarTechAssist.Web.styles.css" asp-append-version="true" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <style>
+        :root {
+            --bg-primary: #282c34;
+            --bg-secondary: #1a1a1a;
+            --bg-tertiary: #0f0f0f;
+            --accent-green: #4CAF50;
+            --accent-green-hover: #45a049;
+            --text-primary: #ffffff;
+            --text-secondary: #b0b0b0;
+            --text-muted: #6a6a6a;
+            --border-color: #4a4a4a;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background-color: var(--bg-secondary);
+            font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: var(--text-primary);
+            min-height: 100vh;
+        }
+
+        .navbar {
+            background: var(--bg-primary) !important;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+            border-bottom: 1px solid var(--border-color);
+            padding: 12px 0;
+        }
+
+        .navbar-brand {
+            color: var(--text-primary) !important;
+            font-weight: 700;
+            font-size: 1.3rem;
+            letter-spacing: -0.5px;
+        }
+
+        .navbar-brand:hover {
+            color: var(--accent-green) !important;
+        }
+
+        .nav-link {
+            color: var(--text-secondary) !important;
+            font-weight: 500;
+            margin: 0 8px;
+            transition: all 0.3s ease;
+            padding: 8px 12px !important;
+            border-radius: 6px;
+        }
+
+        .nav-link:hover {
+            color: var(--accent-green) !important;
+            background: rgba(76, 175, 80, 0.1);
+        }
+
+        .nav-link.active {
+            color: var(--accent-green) !important;
+            background: rgba(76, 175, 80, 0.15);
+        }
+
+        .main-content {
+            margin-top: 20px;
+            min-height: calc(100vh - 200px);
+            padding: 0 20px 40px 20px;
+        }
+
+        .card {
+            background: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            margin-bottom: 24px;
+            color: var(--text-primary);
+        }
+
+        .card-header {
+            background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-tertiary) 100%);
+            border-bottom: 1px solid var(--border-color);
+            color: var(--text-primary);
+            border-radius: 12px 12px 0 0 !important;
+            font-weight: 600;
+            padding: 16px 20px;
+        }
+
+        .card-body {
+            padding: 24px;
+            color: var(--text-secondary);
+        }
+
+        .btn-primary {
+            background: var(--accent-green);
+            border: none;
+            color: var(--text-primary);
+            font-weight: 600;
+            padding: 10px 20px;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary:hover {
+            background: var(--accent-green-hover);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(76, 175, 80, 0.4);
+            color: var(--text-primary);
+        }
+
+        .btn-outline-primary {
+            border: 2px solid var(--accent-green);
+            color: var(--accent-green);
+            background: transparent;
+            font-weight: 600;
+            padding: 10px 20px;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+        }
+
+        .btn-outline-primary:hover {
+            background: var(--accent-green);
+            color: var(--text-primary);
+            border-color: var(--accent-green);
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            border: none;
+        }
+
+        .btn-danger:hover {
+            background: #c82333;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(220, 53, 69, 0.4);
+        }
+
+        .form-control, .form-select {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            border-radius: 8px;
+            padding: 10px 14px;
+        }
+
+        .form-control:focus, .form-select:focus {
+            background: var(--bg-secondary);
+            border-color: var(--accent-green);
+            color: var(--text-primary);
+            box-shadow: 0 0 0 0.2rem rgba(76, 175, 80, 0.25);
+        }
+
+        .form-control::placeholder {
+            color: var(--text-muted);
+        }
+
+        .form-label {
+            color: var(--text-secondary);
+            font-weight: 500;
+            margin-bottom: 8px;
+        }
+
+        .table {
+            color: var(--text-secondary);
+        }
+
+        .table thead {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+        }
+
+        .table tbody tr {
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .table tbody tr:hover {
+            background: rgba(76, 175, 80, 0.05);
+        }
+
+        .footer {
+            background: var(--bg-primary);
+            color: var(--text-secondary);
+            border-top: 1px solid var(--border-color);
+            margin-top: 60px;
+            padding: 24px 0;
+        }
+
+        .footer span {
+            font-size: 0.9rem;
+        }
+
+        .user-info {
+            color: var(--text-secondary);
+            margin-right: 15px;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+        }
+
+        .user-info i {
+            margin-right: 8px;
+            color: var(--accent-green);
+        }
+
+        .alert {
+            border-radius: 8px;
+            border: none;
+        }
+
+        .alert-danger {
+            background: rgba(220, 53, 69, 0.15);
+            color: #ff6b6b;
+            border-left: 3px solid #dc3545;
+        }
+
+        .alert-success {
+            background: rgba(76, 175, 80, 0.15);
+            color: #4CAF50;
+            border-left: 3px solid var(--accent-green);
+        }
+
+        .alert-info {
+            background: rgba(23, 162, 184, 0.15);
+            color: #17a2b8;
+            border-left: 3px solid #17a2b8;
+        }
+
+        .badge {
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-weight: 500;
+        }
+
+        .badge-success {
+            background: var(--accent-green);
+            color: var(--text-primary);
+        }
+
+        .text-muted {
+            color: var(--text-muted) !important;
+        }
+
+        .text-success {
+            color: var(--accent-green) !important;
+        }
+
+        /* Scrollbar personalizada */
+        ::-webkit-scrollbar {
+            width: 10px;
+            height: 10px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-secondary);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 5px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--accent-green);
+        }
+
+        /* Responsivo */
+        @@media (max-width: 768px) {
+            .main-content {
+                padding: 0 10px 20px 10px;
+            }
+
+            .card-body {
+                padding: 16px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <nav class="navbar navbar-expand-lg navbar-dark">
+            <div class="container-fluid">
+                <a class="navbar-brand" href="/Dashboard">
+                    <i class="bi bi-car-front"></i> CarTechAssist
+                </a>
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" 
+                        aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+                <div class="collapse navbar-collapse" id="navbarNav">
+                    <ul class="navbar-nav me-auto">
+                        <li class="nav-item">
+                            <a class="nav-link" href="/Dashboard">
+                                <i class="bi bi-speedometer2"></i> Dashboard
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="/Chamados">
+                                <i class="bi bi-ticket"></i> Chamados
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="/Chamados/Criar">
+                                <i class="bi bi-plus-circle"></i> Novo Chamado
+                            </a>
+                        </li>
+                        @{
+                            var tipoUsuarioIdStr = Context.Session.GetString("TipoUsuarioId");
+                            var isAdmin = !string.IsNullOrEmpty(tipoUsuarioIdStr) && tipoUsuarioIdStr == "3";
+                        }
+                        @if (isAdmin)
+                        {
+                            <li class="nav-item">
+                                <a class="nav-link" href="/Usuarios">
+                                    <i class="bi bi-people"></i> Usuários
+                                </a>
+                            </li>
+                        }
+                    </ul>
+                    <ul class="navbar-nav">
+                        <li class="nav-item">
+                            <span class="user-info">
+                                <i class="bi bi-person-circle"></i>
+                                @Context.Session.GetString("NomeCompleto")
+                            </span>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="/Login?handler=Logout">
+                                <i class="bi bi-box-arrow-right"></i> Sair
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </nav>
+    </header>
+
+    <div class="container-fluid main-content">
+        @RenderBody()
+    </div>
+
+    <footer class="footer mt-auto py-3">
+        <div class="container text-center">
+            <span>&copy; 2025 CarTechAssist - Sistema de Gerenciamento de Chamados</span>
+        </div>
+    </footer>
+
+    <script src="~/lib/jquery/dist/jquery.min.js"></script>
+    <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="~/js/site.js" asp-append-version="true"></script>
+
+    @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

@@ -1,0 +1,174 @@
+@page
+@model CarTechAssist.Web.Pages.DashboardModel
+@{
+    ViewData["Title"] = "Dashboard";
+}
+
+<div class="row mb-4">
+    <div class="col-12">
+        <h1 class="mb-0">
+            <i class="bi bi-speedometer2 text-success"></i> Dashboard
+        </h1>
+        <p class="text-muted">Bem-vindo ao CarTechAssist</p>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-3 mb-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-muted mb-2">Chamados Abertos</h6>
+                        <h3 class="mb-0">@Model.TotalChamadosAbertos</h3>
+                    </div>
+                    <div class="text-success" style="font-size: 2.5rem;">
+                        <i class="bi bi-ticket-perforated"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3 mb-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-muted mb-2">Em Andamento</h6>
+                        <h3 class="mb-0">@Model.TotalChamadosEmAndamento</h3>
+                    </div>
+                    <div class="text-warning" style="font-size: 2.5rem;">
+                        <i class="bi bi-clock-history"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3 mb-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-muted mb-2">Resolvidos</h6>
+                        <h3 class="mb-0">@Model.TotalChamadosResolvidos</h3>
+                    </div>
+                    <div class="text-success" style="font-size: 2.5rem;">
+                        <i class="bi bi-check-circle"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3 mb-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-muted mb-2">Total de Chamados</h6>
+                        <h3 class="mb-0">@Model.TotalChamados</h3>
+                    </div>
+                    <div class="text-info" style="font-size: 2.5rem;">
+                        <i class="bi bi-list-ul"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-clock-history"></i> Chamados Recentes
+                </h5>
+            </div>
+            <div class="card-body">
+                @if (Model.ChamadosRecentes != null && Model.ChamadosRecentes.Any())
+                {
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Número</th>
+                                    <th>Título</th>
+                                    <th>Status</th>
+                                    <th>Prioridade</th>
+                                    <th>Data</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var chamado in Model.ChamadosRecentes)
+                                {
+                                    <tr>
+                                        <td>#@chamado.Numero</td>
+                                        <td>@chamado.Titulo</td>
+                                        <td>
+                                            <span class="badge @Model.GetStatusBadgeClass(chamado.StatusNome)">
+                                                @Model.GetStatusNome(chamado.StatusNome)
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <span class="badge @Model.GetPrioridadeBadgeClass(chamado.PrioridadeNome)">
+                                                @Model.GetPrioridadeNome(chamado.PrioridadeNome)
+                                            </span>
+                                        </td>
+                                        <td>@chamado.DataCriacao.ToString("dd/MM/yyyy HH:mm")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+                else
+                {
+                    <div class="text-center py-4">
+                        <i class="bi bi-inbox" style="font-size: 3rem; color: var(--text-muted);"></i>
+                        <p class="text-muted mt-3">Nenhum chamado encontrado.</p>
+                        <a href="/Chamados/Criar" class="btn btn-primary">
+                            <i class="bi bi-plus-circle"></i> Criar Primeiro Chamado
+                        </a>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-person-circle"></i> Informações do Usuário
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <strong class="text-muted">Nome:</strong>
+                    <p class="mb-0">@Model.NomeUsuario</p>
+                </div>
+                <div class="mb-3">
+                    <strong class="text-muted">Tenant ID:</strong>
+                    <p class="mb-0">@Model.TenantId</p>
+                </div>
+                <div class="mb-3">
+                    <strong class="text-muted">Usuário ID:</strong>
+                    <p class="mb-0">@Model.UsuarioId</p>
+                </div>
+                <hr class="my-3" style="border-color: var(--border-color);">
+                <div class="d-grid gap-2">
+                    <a href="/Chamados/Criar" class="btn btn-primary">
+                        <i class="bi bi-plus-circle"></i> Novo Chamado
+                    </a>
+                    <a href="/Chamados" class="btn btn-outline-primary">
+                        <i class="bi bi-list"></i> Ver Todos os Chamados
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+

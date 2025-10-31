@@ -1,0 +1,141 @@
+using System;
+using CarTechAssist.Domain.Enums;
+
+namespace CarTechAssist.Contracts.Usuarios
+{
+    public record UsuarioDto(
+        int UsuarioId,
+        int TenantId,
+        string Login,
+        string NomeCompleto,
+        string? Email,
+        string? Telefone,
+        TipoUsuarios TipoUsuarioId,
+        bool Ativo,
+        DateTime DataCriacao
+    );
+}
+
+using System;
+
+namespace CarTechAssist.Contracts.Usuarios
+{
+    public record ResetSenhaRequest(
+        string NovaSenha
+    );
+}
+
+using System;
+
+namespace CarTechAssist.Contracts.Usuarios
+{
+    public record AlterarAtivacaoRequest(
+        bool Ativo
+    );
+}
+
+using System;
+using CarTechAssist.Domain.Enums;
+
+namespace CarTechAssist.Contracts.Usuarios
+{
+    public record AtualizarUsuarioRequest(
+        string NomeCompleto,
+        string? Email,
+        string? Telefone,
+        TipoUsuarios TipoUsuarioId
+    );
+}
+
+using System;
+using CarTechAssist.Domain.Enums;
+
+namespace CarTechAssist.Contracts.Usuarios
+{
+    public record CriarUsuarioRequest(
+        int TenantId,
+        string Login,
+        string NomeCompleto,
+        string? Email,
+        string? Telefone,
+        TipoUsuarios TipoUsuarioId,
+        string Senha
+    );
+}
+
+using System;
+using CarTechAssist.Contracts.Enums;
+using CarTechAssist.Domain.Enums;
+
+namespace CarTechAssist.Contracts.Chamados
+{
+    public record ChamadoDetailDto(
+        long ChamadoId,
+        string Numero,
+        string Titulo,
+        string? Descricao,
+        int? CategoriaId,
+        StatusChamado StatusId,
+        PrioridadeChamado PrioridadeId,
+        CanalAtendimento CanalId,
+        int SolicitanteUsuarioId,
+        int? ResponsavelUsuarioId,
+        DateTime DataCriacao,
+        DateTime? SLA_EstimadoFim,
+        IAFeedbackScoreDto? IA_FeedbackScore
+    );
+}
+
+using System;
+using CarTechAssist.Domain.Enums;
+
+namespace CarTechAssist.Contracts.Chamados
+{
+    public record AlterarStatusRequest(
+        int TenantId,
+        StatusChamado NovoStatus,
+        int UsuarioId
+    );
+}
+
+using System;
+
+namespace CarTechAssist.Contracts.Chamados
+{
+    public record AdicionarInteracaoRequest(
+        int TenantId,
+        int UsuarioId,
+        string Mensagem
+    );
+}
+
+using System;
+
+namespace CarTechAssist.Contracts.Chamados
+{
+    public record CriarChamadoRequest(
+        int TenantId,
+        string Titulo,
+        string? Descricao,
+        int? CategoriaId,
+        byte PrioridadeId,
+        byte CanalId,
+        int SolicitanteUsuarioId,
+        int? ResponsavelUsuarioId
+    );
+}
+
+using System;
+using System.Collections.Generic;
+
+namespace CarTechAssist.Contracts.Common
+{
+    public record PagedResult<T>(
+        IReadOnlyList<T> Items,
+        int Total,
+        int Page,
+        int PageSize
+    );
+}
+
+

@@ -1,0 +1,33 @@
+// EXEMPLO: Configuração do EmailService com Mailtrap
+// Substitua as credenciais abaixo pelas suas do Mailtrap
+
+namespace CarTechAssist.Application.Services
+{
+    public class EmailService
+    {
+        // Configuração Mailtrap (para desenvolvimento/testes)
+        private readonly string _smtpServer = "sandbox.smtp.mailtrap.io";
+        private readonly int _smtpPort = 587;
+        private readonly string _smtpUser = "SEU_USUARIO_MAILTRAP"; // Ex: "1234567890abcdef"
+        private readonly string _smtpPass = "SUA_SENHA_MAILTRAP"; // Ex: "1234567890abcdef"
+        
+        // OU Configuração Gmail (para produção - após reset)
+        // private readonly string _smtpServer = "smtp.gmail.com";
+        // private readonly int _smtpPort = 587;
+        // private readonly string _smtpUser = "cartech.assist@gmail.com";
+        // private readonly string _smtpPass = "syhznuhopfneyhds";
+        
+        private readonly ILogger<EmailService> _logger;
+
+        // ... resto do código permanece igual ...
+    }
+}
+
+// INSTRUÇÕES:
+// 1. Acesse: https://mailtrap.io
+// 2. Crie conta gratuita
+// 3. Vá em "Email Testing" > "SMTP Settings"
+// 4. Copie Username e Password
+// 5. Substitua _smtpUser e _smtpPass acima
+// 6. Os emails irão para a inbox de teste do Mailtrap (não enviam de verdade)
+

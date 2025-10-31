@@ -1,0 +1,7 @@
+namespace CarTechAssist.Contracts.Auth
+{
+    public record RefreshTokenRequest(
+        string RefreshToken
+    );
+}
+
