@@ -11,5 +11,6 @@ namespace CarTechAssist.Domain.Interfaces
     {
         Task<long> AdicionarAsync(ChamadoAnexo anexo, CancellationToken ct);
         Task<IReadOnlyList<ChamadoAnexo>> ListarPorChamadoAsync(int chamadoId, CancellationToken ct);
+        Task<ChamadoAnexo?> ObterPorIdAsync(long anexoId, int tenantId, CancellationToken ct);
     }
 }

@@ -4,6 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>@ViewData["Title"] - CarTechAssist</title>
+    <link rel="icon" type="image/x-icon" href="~/img/LOGO.ico" />
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/CarTechAssist.Web.styles.css" asp-append-version="true" />
@@ -318,6 +319,15 @@
                         @{
                             var tipoUsuarioIdStr = Context.Session.GetString("TipoUsuarioId");
                             var isAdmin = !string.IsNullOrEmpty(tipoUsuarioIdStr) && tipoUsuarioIdStr == "3";
+                            var isCliente = !string.IsNullOrEmpty(tipoUsuarioIdStr) && tipoUsuarioIdStr == "1";
+                        }
+                        @if (isCliente)
+                        {
+                            <li class="nav-item">
+                                <a class="nav-link" href="/ChatBot">
+                                    <i class="bi bi-robot"></i> ChatBot
+                                </a>
+                            </li>
                         }
                         @if (isAdmin)
                         {

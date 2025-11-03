@@ -19,7 +19,7 @@ namespace CarTechAssist.Domain.Interfaces
               int tenantId, 
               byte? statusId,
               int? responsaveUsuarioId,
-              int? solicitanteUsuarioId, // Novo parâmetro
+              int? solicitanteUsuarioId, 
               int page, 
               int pageSize,
               CancellationToken ct
@@ -62,6 +62,12 @@ namespace CarTechAssist.Domain.Interfaces
             string mensagem,
             CancellationToken ct);
 
+        // SELECT interações de um chamado
+        Task<IReadOnlyList<ChamadoInteracao>> ListarInteracoesAsync(
+            long chamadoId,
+            int tenantId,
+            CancellationToken ct);
+
         // EXEC core.usp_Chamado_AlterarStatus
         Task<Chamado> AlterarStatusAsync(
             long chamadoId,
@@ -80,80 +86,10 @@ namespace CarTechAssist.Domain.Interfaces
             int usuarioId,
             CancellationToken ct);
 
-        // Adicionar feedback de IA
-        Task<Chamado> AdicionarFeedbackAsync(
-            long chamadoId,
+        // Estatísticas de chamados
+        Task<(int Total, int Abertos, int EmAndamento, int Resolvidos, int Cancelados)> ObterEstatisticasAsync(
             int tenantId,
-            int? usuarioId,
-            byte score,
-            string? comentario,
-            CancellationToken ct);
-
-        // Listar interações do chamado
-        Task<IReadOnlyList<ChamadoInteracao>> ListarInteracoesAsync(
-            long chamadoId,
-            int tenantId,
-            CancellationToken ct);
-
-        // Listar interações do chamado com nome do autor (otimizado - JOIN)
-        Task<IReadOnlyList<(ChamadoInteracao Interacao, string? AutorNome)>> ListarInteracoesComAutorAsync(
-            long chamadoId,
-            int tenantId,
-            CancellationToken ct);
-
-        // Obter anexo por ID
-        Task<ChamadoAnexo?> ObterAnexoAsync(
-            long anexoId,
-            int tenantId,
-            CancellationToken ct);
-
-        // Listar anexos do chamado
-        Task<IReadOnlyList<ChamadoAnexo>> ListarAnexosAsync(
-            long chamadoId,
-            int tenantId,
-            CancellationToken ct);
-
-        // Atualizar chamado
-        Task<Chamado> AtualizarAsync(
-            long chamadoId,
-            int tenantId,
-            string? titulo,
-            string? descricao,
-            int? categoriaId,
-            byte? prioridadeId,
-            int usuarioId,
-            string? motivo,
-            CancellationToken ct);
-
-        // Atribuir responsável
-        Task<Chamado> AtribuirResponsavelAsync(
-            long chamadoId,
-            int tenantId,
-            int? responsavelUsuarioId,
-            int usuarioId,
-            string? motivo,
-            CancellationToken ct);
-
-        // Listar histórico de status
-        Task<IReadOnlyList<(ChamadoStatusHistorico Historico, string? AlteradoPorNome)>> ListarHistoricoStatusAsync(
-            long chamadoId,
-            int tenantId,
-            CancellationToken ct);
-
-        // Deletar chamado (soft delete)
-        Task DeletarAsync(
-            long chamadoId,
-            int tenantId,
-            int usuarioId,
-            string motivo,
-            CancellationToken ct);
-
-        // Atualizar datas de resolução/fechamento
-        Task<Chamado> AtualizarDatasStatusAsync(
-            long chamadoId,
-            int tenantId,
-            DateTime? dataResolvido,
-            DateTime? dataFechado,
+            int? solicitanteUsuarioId,
             CancellationToken ct);
     }
 }

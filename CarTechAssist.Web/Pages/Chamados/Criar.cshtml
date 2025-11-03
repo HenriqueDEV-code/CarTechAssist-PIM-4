@@ -1,0 +1,114 @@
+@page
+@model CarTechAssist.Web.Pages.Chamados.CriarModel
+@{
+    ViewData["Title"] = "Novo Chamado";
+}
+
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <h1 class="mb-0">
+                    <i class="bi bi-plus-circle text-success"></i> Novo Chamado
+                </h1>
+                <p class="text-muted">Crie um novo chamado de suporte</p>
+            </div>
+            <div>
+                <a href="/Chamados" class="btn btn-outline-secondary">
+                    <i class="bi bi-arrow-left"></i> Voltar
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+@if (!string.IsNullOrEmpty(Model.SuccessMessage))
+{
+    <div class="alert alert-success alert-dismissible fade show" role="alert">
+        @Model.SuccessMessage
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+
+@if (!string.IsNullOrEmpty(Model.ErrorMessage))
+{
+    <div class="alert alert-danger" role="alert">
+        @Model.ErrorMessage
+    </div>
+}
+
+<div class="row">
+    <div class="col-md-8 mx-auto">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Informações do Chamado</h5>
+            </div>
+            <div class="card-body">
+                <form method="post">
+                    <div class="mb-3">
+                        <label asp-for="ChamadoRequest.Titulo" class="form-label">Título <span class="text-danger">*</span></label>
+                        <input asp-for="ChamadoRequest.Titulo" class="form-control" required maxlength="200" />
+                        <span asp-validation-for="ChamadoRequest.Titulo" class="text-danger"></span>
+                    </div>
+
+                    <div class="mb-3">
+                        <label asp-for="ChamadoRequest.Descricao" class="form-label">Descrição</label>
+                        <textarea asp-for="ChamadoRequest.Descricao" class="form-control" rows="5" maxlength="2000"></textarea>
+                        <span asp-validation-for="ChamadoRequest.Descricao" class="text-danger"></span>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label asp-for="ChamadoRequest.CategoriaId" class="form-label">Categoria</label>
+                            <select asp-for="ChamadoRequest.CategoriaId" class="form-select">
+                                <option value="">Selecione uma categoria</option>
+                                @if (Model.Categorias != null)
+                                {
+                                    @foreach (var categoria in Model.Categorias)
+                                    {
+                                        <option value="@categoria.CategoriaId">@categoria.Nome</option>
+                                    }
+                                }
+                            </select>
+                        </div>
+
+                        <div class="col-md-6 mb-3">
+                            <label asp-for="ChamadoRequest.PrioridadeId" class="form-label">Prioridade <span class="text-danger">*</span></label>
+                            <select asp-for="ChamadoRequest.PrioridadeId" class="form-select" required>
+                                <option value="1">Baixa</option>
+                                <option value="2" selected>Média</option>
+                                <option value="3">Alta</option>
+                                <option value="4">Urgente</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label asp-for="ChamadoRequest.CanalId" class="form-label">Canal <span class="text-danger">*</span></label>
+                        <select asp-for="ChamadoRequest.CanalId" class="form-select" required>
+                            <option value="1" selected>Web</option>
+                            <option value="2">Desktop</option>
+                            <option value="3">Mobile</option>
+                            <option value="4">Chatbot</option>
+                        </select>
+                    </div>
+
+                    <input type="hidden" asp-for="ChamadoRequest.SolicitanteUsuarioId" />
+                    <input type="hidden" asp-for="ChamadoRequest.ResponsavelUsuarioId" />
+
+                    <div class="d-flex justify-content-between">
+                        <a href="/Chamados" class="btn btn-secondary">Cancelar</a>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check-circle"></i> Criar Chamado
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    @{await Html.RenderPartialAsync("_ValidationScriptsPartial");}
+}
+

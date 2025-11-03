@@ -39,6 +39,7 @@ builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<ChamadosService>();
 builder.Services.AddScoped<UsuariosService>();
 builder.Services.AddScoped<CategoriasService>();
+builder.Services.AddScoped<ChatBotService>();
 
 var app = builder.Build();
 

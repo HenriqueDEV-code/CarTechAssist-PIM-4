@@ -82,7 +82,7 @@ namespace CarTechAssist.Web.Services
 
         public async Task<Stream> DownloadAnexoAsync(long id, long anexoId, CancellationToken ct = default)
         {
-            return await _apiClient.GetStreamAsync($"api/chamados/{id}/anexos/{anexoId}/download", ct);
+            return await _apiClient.GetStreamAsync($"api/chamados/{id}/anexos/{anexoId}", ct);
         }
 
         public async Task<object?> UploadAnexoAsync(long id, IFormFile arquivo, CancellationToken ct = default)

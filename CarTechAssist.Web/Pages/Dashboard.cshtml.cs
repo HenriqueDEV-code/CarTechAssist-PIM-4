@@ -20,6 +20,7 @@ namespace CarTechAssist.Web.Pages
         public string NomeUsuario { get; set; } = string.Empty;
         public int TenantId { get; set; }
         public int UsuarioId { get; set; }
+        public bool IsCliente { get; set; }
 
         public DashboardModel(ChamadosService chamadosService, ILogger<DashboardModel> logger)
         {
@@ -39,7 +40,11 @@ namespace CarTechAssist.Web.Pages
             // Obter informações da sessão
             var tenantIdStr = HttpContext.Session.GetString("TenantId");
             var usuarioIdStr = HttpContext.Session.GetString("UsuarioId");
+            var tipoUsuarioIdStr = HttpContext.Session.GetString("TipoUsuarioId");
             NomeUsuario = HttpContext.Session.GetString("NomeCompleto") ?? "Usuário";
+            
+            // Verificar se é cliente
+            IsCliente = !string.IsNullOrEmpty(tipoUsuarioIdStr) && tipoUsuarioIdStr == "1";
 
             int tempTenantId;
             if (!int.TryParse(tenantIdStr, out tempTenantId))

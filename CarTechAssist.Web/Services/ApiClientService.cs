@@ -81,9 +81,38 @@ namespace CarTechAssist.Web.Services
             var content = json != null ? new StringContent(json, Encoding.UTF8, "application/json") : null;
             
             var response = await _httpClient.PostAsync(endpoint, content, ct);
-            await EnsureSuccessStatusCode(response);
-            
             var responseContent = await response.Content.ReadAsStringAsync(ct);
+            
+            // Se for 400 (BadRequest), tentar deserializar a resposta mesmo sendo erro
+            // Isso permite que o código leia mensagens de erro estruturadas (ex: { success: false, message: "..." })
+            if (response.StatusCode == System.Net.HttpStatusCode.BadRequest)
+            {
+                if (!string.IsNullOrEmpty(responseContent))
+                {
+                    try
+                    {
+                        var errorObj = JsonSerializer.Deserialize<T>(responseContent, _jsonOptions);
+                        // Se conseguiu deserializar, retornar objeto (o controller vai verificar success: false)
+                        // Isso permite que mensagens de erro estruturadas sejam lidas
+                        if (errorObj != null)
+                            return errorObj;
+                    }
+                    catch
+                    {
+                        // Se não conseguir deserializar, continua e lança exceção
+                    }
+                }
+                // Se chegou aqui, não conseguiu deserializar - lança exceção com a mensagem
+                await EnsureSuccessStatusCode(response);
+                return default; // Nunca chega aqui, mas compilador precisa
+            }
+            
+            // Para outros status codes, verificar sucesso normalmente
+            if (!response.IsSuccessStatusCode)
+            {
+                await EnsureSuccessStatusCode(response);
+            }
+            
             return string.IsNullOrEmpty(responseContent) ? default : JsonSerializer.Deserialize<T>(responseContent, _jsonOptions);
         }
 
@@ -159,22 +188,47 @@ namespace CarTechAssist.Web.Services
             {
                 var errorContent = await response.Content.ReadAsStringAsync();
                 var errorMessage = $"API retornou status {(int)response.StatusCode}: {response.ReasonPhrase}";
+                string? messageFromApi = null;
                 
                 if (!string.IsNullOrEmpty(errorContent))
                 {
                     try
                     {
                         var errorObj = JsonSerializer.Deserialize<JsonElement>(errorContent);
-                        if (errorObj.TryGetProperty("error", out var errorProp))
-                            errorMessage = errorProp.GetString() ?? errorMessage;
+                        
+                        // Tentar ler a mensagem de erro da API
+                        if (errorObj.TryGetProperty("message", out var messageProp))
+                        {
+                            messageFromApi = messageProp.GetString();
+                        }
+                        else if (errorObj.TryGetProperty("error", out var errorProp))
+                        {
+                            messageFromApi = errorProp.GetString();
+                        }
+                        
+                        // Se encontrou mensagem da API, usar ela
+                        if (!string.IsNullOrEmpty(messageFromApi))
+                        {
+                            errorMessage = messageFromApi;
+                        }
                     }
                     catch
                     {
                         // Se não conseguir deserializar, usa o conteúdo bruto
+                        if (!string.IsNullOrEmpty(errorContent))
+                        {
+                            errorMessage = errorContent;
+                        }
                     }
                 }
                 
-                throw new HttpRequestException(errorMessage, null, response.StatusCode);
+                // Armazenar a mensagem de erro e o conteúdo completo no Data da exceção
+                var exception = new HttpRequestException(errorMessage, null, response.StatusCode);
+                exception.Data["StatusCode"] = response.StatusCode;
+                exception.Data["ResponseContent"] = errorContent;
+                exception.Data["Message"] = messageFromApi ?? errorMessage;
+                
+                throw exception;
             }
         }
     }

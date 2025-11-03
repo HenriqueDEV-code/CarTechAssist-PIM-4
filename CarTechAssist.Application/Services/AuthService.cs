@@ -73,13 +73,19 @@ namespace CarTechAssist.Application.Services
                 _configuration["Jwt:SecretKey"] ?? throw new InvalidOperationException("JWT SecretKey não configurada")));
             var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
+            // Garantir que o TipoUsuarioId seja convertido para byte (número) e não para string do enum
+            var tipoUsuarioIdNumero = ((byte)usuario.TipoUsuarioId).ToString();
+            
+            _logger.LogDebug("Gerando JWT token. TipoUsuarioId (enum): {TipoUsuarioId}, TipoUsuarioId (número): {TipoUsuarioIdNumero}", 
+                usuario.TipoUsuarioId, tipoUsuarioIdNumero);
+            
             var claims = new[]
             {
                 new Claim(ClaimTypes.NameIdentifier, usuario.UsuarioId.ToString()),
                 new Claim(ClaimTypes.Name, usuario.Login),
                 new Claim("TenantId", usuario.TenantId.ToString()),
                 new Claim("NomeCompleto", usuario.NomeCompleto),
-                new Claim(ClaimTypes.Role, usuario.TipoUsuarioId.ToString())
+                new Claim(ClaimTypes.Role, tipoUsuarioIdNumero) // Usar número, não string do enum
             };
 
             var token = new JwtSecurityToken(

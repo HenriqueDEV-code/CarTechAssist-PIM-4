@@ -26,6 +26,25 @@ namespace CarTechAssist.Api.Controllers
         {
             try
             {
+                // Validar dados de entrada
+                if (string.IsNullOrWhiteSpace(request.Login))
+                {
+                    return BadRequest(new { 
+                        message = "Login é obrigatório.",
+                        success = false,
+                        error = "LoginObrigatorio"
+                    });
+                }
+
+                if (string.IsNullOrWhiteSpace(request.Email))
+                {
+                    return BadRequest(new { 
+                        message = "Email é obrigatório.",
+                        success = false,
+                        error = "EmailObrigatorio"
+                    });
+                }
+
                 // TenantId padrão é 1 para recuperação pública
                 var tenantId = 1;
 
@@ -34,30 +53,51 @@ namespace CarTechAssist.Api.Controllers
 
                 var resultado = await _recuperacaoSenhaService.SolicitarRecuperacaoComDetalhesAsync(
                     tenantId,
-                    request.Login,
-                    request.Email,
+                    request.Login.Trim(),
+                    request.Email.Trim(),
                     ct);
 
-                // Retornar resultado com informações de debug (temporário para desenvolvimento)
-                var response = new
+                // Só retorna sucesso se o código foi gerado e enviado
+                return Ok(new
                 {
-                    message = "Se o usuário e e-mail estiverem corretos, você receberá um código de recuperação por e-mail.",
+                    message = "Código de recuperação enviado com sucesso! Verifique sua caixa de entrada e spam.",
                     success = true,
-                    // DEBUG: Mostrar código se email falhou (apenas em desenvolvimento)
-                    codigo = resultado.EmailEnviado ? null : resultado.Codigo,
                     emailEnviado = resultado.EmailEnviado,
-                    usuarioEncontrado = resultado.UsuarioEncontrado
-                };
-
-                return Ok(response);
+                    // DEBUG: Mostrar código apenas em desenvolvimento (se email não foi enviado)
+                    codigo = resultado.EmailEnviado ? null : resultado.Codigo
+                });
+            }
+            catch (ArgumentException ex)
+            {
+                // Erro de validação de argumentos
+                _logger.LogWarning("Erro de validação na recuperação de senha: {Erro}", ex.Message);
+                return BadRequest(new { 
+                    message = ex.Message,
+                    success = false,
+                    error = "ValidacaoErro"
+                });
+            }
+            catch (InvalidOperationException ex)
+            {
+                // Captura exceção quando email não corresponde, usuário não encontrado, etc.
+                _logger.LogError("🚫🚫🚫 VALIDAÇÃO FALHOU NO CONTROLLER - Erro na recuperação de senha: {Erro}", ex.Message);
+                _logger.LogError("Stack trace: {StackTrace}", ex.StackTrace);
+                
+                // Retornar BadRequest com a mensagem de erro clara
+                return BadRequest(new { 
+                    message = ex.Message,
+                    success = false,
+                    error = "EmailInvalido"
+                });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Erro ao solicitar recuperação de senha. Detalhes: {Erro}", ex.Message);
-                // Por segurança, retorna sucesso mesmo em caso de erro
-                return Ok(new { 
-                    message = "Se o usuário e e-mail estiverem corretos, você receberá um código de recuperação por e-mail.",
-                    success = true
+                _logger.LogError(ex, "Erro inesperado ao solicitar recuperação de senha. Detalhes: {Erro}", ex.Message);
+                // Por segurança, não revelar detalhes do erro, mas também não retornar sucesso falso
+                return StatusCode(500, new { 
+                    message = "Ocorreu um erro ao processar sua solicitação. Tente novamente mais tarde.",
+                    success = false,
+                    error = "ErroInterno"
                 });
             }
         }

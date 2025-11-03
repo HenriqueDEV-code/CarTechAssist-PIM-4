@@ -80,7 +80,7 @@ namespace CarTechAssist.Web.Pages
                 }
                 else if (ex.Message.Contains("Connection refused") || ex.Message.Contains("No connection") || ex.Message.Contains("refused"))
                 {
-                    ErrorMessage = "Não foi possível conectar ao servidor. Verifique se a API está em execução em https://localhost:7294 ou http://localhost:5167";
+                    ErrorMessage = "Não foi possível conectar.";
                 }
                 else if (ex.Message.Contains("SSL") || ex.Message.Contains("certificate"))
                 {
@@ -88,7 +88,7 @@ namespace CarTechAssist.Web.Pages
                 }
                 else
                 {
-                    ErrorMessage = $"Erro ao conectar com o servidor: {ex.Message}. Verifique se a API está em execução em https://localhost:7294";
+                    ErrorMessage = $"Erro ao conectar: {ex.Message}.";
                 }
                 
                 return Page();

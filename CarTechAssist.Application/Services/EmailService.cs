@@ -1,20 +1,30 @@
 using System.Net;
 using System.Net.Mail;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace CarTechAssist.Application.Services
 {
     public class EmailService
     {
-        private readonly string _smtpServer = "smtp.gmail.com";
-        private readonly int _smtpPort = 587;
-        private readonly string _smtpUser = "cartech.assist@gmail.com";
-        private readonly string _smtpPass = "syhznuhopfneyhds"; // App Password Gmail (SEM ESPAÇOS - 16 caracteres)
+        private readonly string _smtpServer;
+        private readonly int _smtpPort;
+        private readonly string _smtpUser;
+        private readonly string _smtpPass;
         private readonly ILogger<EmailService> _logger;
 
-        public EmailService(ILogger<EmailService> logger)
+        public EmailService(IConfiguration configuration, ILogger<EmailService> logger)
         {
             _logger = logger;
+            
+            // Configuração via appsettings.json
+            _smtpServer = configuration["Email:SmtpServer"] ?? "smtp.gmail.com";
+            _smtpPort = int.Parse(configuration["Email:SmtpPort"] ?? "587");
+            _smtpUser = configuration["Email:SmtpUser"] ?? throw new InvalidOperationException("Email:SmtpUser não configurado no appsettings.json");
+            _smtpPass = configuration["Email:SmtpPassword"] ?? throw new InvalidOperationException("Email:SmtpPassword não configurado no appsettings.json");
+            
+            _logger.LogInformation("EmailService configurado - Servidor: {Server}:{Port}, User: {User}", 
+                _smtpServer, _smtpPort, _smtpUser);
         }
 
         public async Task<(bool Sucesso, string? ErroDetalhado)> EnviarEmailComDetalhesAsync(

@@ -1,92 +1,42 @@
+using System.IO;
 using CarTechAssist.Contracts.Common;
 using CarTechAssist.Contracts.Enums;
-using CarTechAssist.Contracts.Feedback;
 using CarTechAssist.Contracts.Tickets;
 using CarTechAssist.Domain.Entities;
 using CarTechAssist.Domain.Enums;
 using CarTechAssist.Domain.Interfaces;
-using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Configuration;
 
 namespace CarTechAssist.Application.Services
 {
     public class ChamadosService
     {
         private readonly IChamadosRepository _chamadosRepository;
-        private readonly ILogger<ChamadosService> _logger;
-        private readonly IUsuariosRepository _usuariosRepository;
-        private readonly ICategoriasRepository _categoriasRepository;
+        private readonly IAnexosReposity _anexosRepository;
+        private readonly IFeedbackRepository _feedbackRepository;
+        private readonly IConfiguration _configuration;
 
         public ChamadosService(
-            IChamadosRepository chamadosRepository, 
-            IUsuariosRepository usuariosRepository,
-            ICategoriasRepository categoriasRepository,
-            ILogger<ChamadosService> logger)
+            IChamadosRepository chamadosRepository,
+            IAnexosReposity anexosRepository,
+            IFeedbackRepository feedbackRepository,
+            IConfiguration configuration)
         {
             _chamadosRepository = chamadosRepository;
-            _usuariosRepository = usuariosRepository;
-            _categoriasRepository = categoriasRepository;
-            _logger = logger;
-        }
-
-        /// <summary>
-        /// Valida se a transição de status é permitida pelas regras de negócio
-        /// </summary>
-        private void ValidarTransicaoStatus(StatusChamado statusAtual, StatusChamado novoStatus)
-        {
-            var transicoesPermitidas = statusAtual switch
-            {
-                StatusChamado.Aberto => new[] 
-                { 
-                    StatusChamado.EmAndamento, 
-                    StatusChamado.Pendente, 
-                    StatusChamado.Cancelado 
-                },
-                StatusChamado.EmAndamento => new[] 
-                { 
-                    StatusChamado.Pendente, 
-                    StatusChamado.Resolvido, 
-                    StatusChamado.Cancelado 
-                },
-                StatusChamado.Pendente => new[] 
-                { 
-                    StatusChamado.EmAndamento, 
-                    StatusChamado.Cancelado 
-                },
-                StatusChamado.Resolvido => new[] 
-                { 
-                    StatusChamado.Fechado 
-                },
-                StatusChamado.Fechado => Array.Empty<StatusChamado>(), // Não pode mudar
-                StatusChamado.Cancelado => Array.Empty<StatusChamado>(), // Não pode mudar
-                _ => Array.Empty<StatusChamado>()
-            };
-
-            if (!transicoesPermitidas.Contains(novoStatus))
-            {
-                throw new InvalidOperationException(
-                    $"Transição de status inválida: não é possível alterar de '{statusAtual}' para '{novoStatus}'. " +
-                    $"Transições permitidas: {string.Join(", ", transicoesPermitidas)}");
-            }
+            _anexosRepository = anexosRepository;
+            _feedbackRepository = feedbackRepository;
+            _configuration = configuration;
         }
 
         public async Task<PagedResult<TicketView>> ListarAsync(
             int tenantId,
             byte? statusId,
             int? responsavelUsuarioId,
-            int? solicitanteUsuarioId, // Novo filtro
+            int? solicitanteUsuarioId,
             int page,
             int pageSize,
-            byte? tipoUsuarioId, // Para validar permissões
             CancellationToken ct)
         {
-            // CRÍTICO: Cliente só pode ver seus próprios chamados
-            // Nota: O filtro por solicitanteUsuarioId é passado pelo controller quando é cliente
-            if (tipoUsuarioId == (byte)TipoUsuarios.Cliente)
-            {
-                // Cliente não pode filtrar por responsável
-                responsavelUsuarioId = null;
-            }
-
             var (items, total) = await _chamadosRepository.ListaAsync(
                 tenantId, statusId, responsavelUsuarioId, solicitanteUsuarioId, page, pageSize, ct);
 
@@ -103,22 +53,25 @@ namespace CarTechAssist.Application.Services
             return new PagedResult<TicketView>(ticketViews, total, page, pageSize);
         }
 
-        public async Task<ChamadoDetailDto?> ObterAsync(int tenantId, long chamadoId, CancellationToken ct)
+        public async Task<ChamadoDetailDto?> ObterAsync(
+            long chamadoId, 
+            int tenantId,
+            int? usuarioId = null,
+            byte? tipoUsuarioId = null,
+            CancellationToken ct = default)
         {
-            _logger.LogInformation("Obtendo chamado {ChamadoId} para tenant {TenantId}", chamadoId, tenantId);
             var chamado = await _chamadosRepository.ObterAsync(chamadoId, ct);
-            if (chamado == null)
-            {
-                _logger.LogWarning("Chamado {ChamadoId} não encontrado", chamadoId);
-                return null;
-            }
+            if (chamado == null) return null;
 
-            // Validação de segurança: verificar se o chamado pertence ao tenant
+            // Validar tenant
             if (chamado.TenantId != tenantId)
+                throw new UnauthorizedAccessException("Chamado não pertence ao tenant informado.");
+
+            // Validar permissões: Cliente só pode ver seus próprios chamados
+            if (tipoUsuarioId == 1 && usuarioId.HasValue)
             {
-                _logger.LogWarning("Tentativa de acesso a chamado de outro tenant. ChamadoId: {ChamadoId}, Tenant esperado: {TenantId}, Tenant do chamado: {ChamadoTenantId}",
-                    chamadoId, tenantId, chamado.TenantId);
-                return null;
+                if (chamado.SolicitanteUsuarioId != usuarioId.Value)
+                    throw new UnauthorizedAccessException("Você não tem permissão para visualizar este chamado.");
             }
 
             return new ChamadoDetailDto(
@@ -142,44 +95,6 @@ namespace CarTechAssist.Application.Services
             CriarChamadoRequest request,
             CancellationToken ct)
         {
-            _logger.LogInformation("Criando novo chamado para tenant {TenantId}: {Titulo}", tenantId, request.Titulo);
-
-            // CRÍTICO: Validações de integridade referencial
-            // Validar categoria
-            if (request.CategoriaId.HasValue)
-            {
-                var categorias = await _categoriasRepository.ListarAtivasAsync(tenantId, ct);
-                var categoria = categorias.FirstOrDefault(c => c.CategoriaId == request.CategoriaId.Value);
-                if (categoria == null)
-                {
-                    throw new InvalidOperationException($"Categoria {request.CategoriaId.Value} não encontrada ou inativa para este tenant.");
-                }
-            }
-
-            // Validar solicitante
-            var solicitante = await _usuariosRepository.ObterPorIdAsync(request.SolicitanteUsuarioId, ct);
-            if (solicitante == null || solicitante.TenantId != tenantId || !solicitante.Ativo || solicitante.Excluido)
-            {
-                throw new InvalidOperationException("Solicitante inválido, inativo ou não pertence ao tenant.");
-            }
-
-            // Validar responsável (se informado)
-            if (request.ResponsavelUsuarioId.HasValue)
-            {
-                var responsavel = await _usuariosRepository.ObterPorIdAsync(request.ResponsavelUsuarioId.Value, ct);
-                if (responsavel == null || responsavel.TenantId != tenantId || !responsavel.Ativo || responsavel.Excluido)
-                {
-                    throw new InvalidOperationException("Responsável inválido, inativo ou não pertence ao tenant.");
-                }
-                
-                // Responsável deve ser Técnico ou Admin
-                if (responsavel.TipoUsuarioId != TipoUsuarios.Tecnico && 
-                    responsavel.TipoUsuarioId != TipoUsuarios.Administrador)
-                {
-                    throw new InvalidOperationException("Responsável deve ser Técnico ou Administrador.");
-                }
-            }
-
             var chamado = await _chamadosRepository.CriarAsync(
                 tenantId,
                 request.Titulo,
@@ -190,12 +105,6 @@ namespace CarTechAssist.Application.Services
                 request.SolicitanteUsuarioId,
                 request.ResponsavelUsuarioId,
                 ct);
-
-            // Validar que status inicial é Aberto
-            if (chamado.StatusId != StatusChamado.Aberto)
-            {
-                _logger.LogWarning("Chamado criado com status diferente de Aberto: {StatusId}", chamado.StatusId);
-            }
 
             return new ChamadoDetailDto(
                 chamado.ChamadoId,
@@ -211,6 +120,46 @@ namespace CarTechAssist.Application.Services
                 chamado.DataCriacao,
                 chamado.DataAtualizacao
             );
+        }
+
+        public async Task<IReadOnlyList<InteracaoDto>> ListarInteracoesAsync(
+            long chamadoId,
+            int tenantId,
+            CancellationToken ct)
+        {
+            var interacoes = await _chamadosRepository.ListarInteracoesAsync(chamadoId, tenantId, ct);
+            
+            // Retornar interações com nome do tipo de usuário como identificação
+            // O nome completo do autor será buscado no frontend se necessário
+            return interacoes.Select(i => new InteracaoDto(
+                i.InteracaoId,
+                i.ChamadoId,
+                i.AutorUsuarioId,
+                GetAutorNome(i.AutorTipoUsuarioId, i.AutorUsuarioId), // Nome baseado no tipo
+                (byte)i.AutorTipoUsuarioId,
+                (byte)i.CanalId,
+                i.Mensagem,
+                i.Interna,
+                i.IA_Gerada,
+                i.IA_Modelo,
+                i.IA_Confianca,
+                i.IA_ResumoRaciocinio,
+                i.DataCriacao
+            )).ToList();
+        }
+
+        private static string GetAutorNome(Domain.Enums.TipoUsuarios tipoUsuario, int? usuarioId)
+        {
+            var tipoNome = tipoUsuario switch
+            {
+                Domain.Enums.TipoUsuarios.Cliente => "Cliente",
+                Domain.Enums.TipoUsuarios.Tecnico => "Agente",
+                Domain.Enums.TipoUsuarios.Administrador => "Admin",
+                Domain.Enums.TipoUsuarios.Bot => "Bot",
+                _ => "Usuário"
+            };
+
+            return usuarioId.HasValue ? $"{tipoNome} #{usuarioId}" : tipoNome;
         }
 
         public async Task<ChamadoDetailDto> AdicionarInteracaoAsync(
@@ -246,47 +195,41 @@ namespace CarTechAssist.Application.Services
             AlterarStatusRequest request,
             CancellationToken ct)
         {
-            // CRÍTICO: Validar transição de status
-            var chamadoAtual = await _chamadosRepository.ObterAsync(chamadoId, ct);
-            if (chamadoAtual == null || chamadoAtual.TenantId != tenantId)
-            {
-                throw new UnauthorizedAccessException("Chamado não encontrado ou não pertence ao tenant atual.");
-            }
-
-            var novoStatus = (StatusChamado)request.NovoStatus;
-            ValidarTransicaoStatus(chamadoAtual.StatusId, novoStatus);
-
             var chamado = await _chamadosRepository.AlterarStatusAsync(
                 chamadoId, tenantId, request.NovoStatus, usuarioId, ct);
 
-            // CRÍTICO: Atualizar datas automaticamente se a stored procedure não atualizou
-            // Isso garante que as datas sejam atualizadas mesmo que a SP não faça
-            bool precisaAtualizar = false;
-            DateTime? dataResolvido = null;
-            DateTime? dataFechado = null;
+            return new ChamadoDetailDto(
+                chamado.ChamadoId,
+                chamado.Numero,
+                chamado.Titulo,
+                chamado.Descricao,
+                chamado.CategoriaId,
+                (byte)chamado.StatusId,
+                (byte)chamado.PrioridadeId,
+                (byte)chamado.CanalId,
+                chamado.SolicitanteUsuarioId,
+                chamado.ResponsavelUsuarioId,
+                chamado.DataCriacao,
+                chamado.DataAtualizacao
+            );
+        }
 
-            if (novoStatus == StatusChamado.Resolvido && chamado.DataResolvido == null)
-            {
-                dataResolvido = DateTime.UtcNow;
-                precisaAtualizar = true;
-            }
-
-            if (novoStatus == StatusChamado.Fechado && chamado.DataFechado == null)
-            {
-                dataFechado = DateTime.UtcNow;
-                precisaAtualizar = true;
-            }
-
-            // Se precisa atualizar, fazer UPDATE adicional
-            if (precisaAtualizar)
-            {
-                chamado = await _chamadosRepository.AtualizarDatasStatusAsync(
-                    chamadoId, tenantId, dataResolvido, dataFechado, ct);
-            }
-
-            _logger.LogInformation(
-                "Status do chamado {ChamadoId} alterado de {StatusAntigo} para {StatusNovo} pelo usuário {UsuarioId}",
-                chamadoId, chamadoAtual.StatusId, novoStatus, usuarioId);
+        public async Task<ChamadoDetailDto> AdicionarInteracaoIaAsync(
+            long chamadoId,
+            int tenantId,
+            string modelo,
+            string mensagem,
+            decimal? confianca,
+            string? resumoRaciocinio,
+            string provedor,
+            int? inputTokens,
+            int? outputTokens,
+            decimal? custoUsd,
+            CancellationToken ct)
+        {
+            var chamado = await _chamadosRepository.AdicionarInteracaoIaAsync(
+                chamadoId, tenantId, modelo, mensagem, confianca, resumoRaciocinio,
+                provedor, inputTokens, outputTokens, custoUsd, ct);
 
             return new ChamadoDetailDto(
                 chamado.ChamadoId,
@@ -313,321 +256,126 @@ namespace CarTechAssist.Application.Services
             byte[] bytes,
             CancellationToken ct)
         {
-            await _chamadosRepository.AdicionarAnexoAsync(
-                chamadoId, tenantId, nomeArquivo, contentType, bytes, usuarioId, ct);
+            // Validações de arquivo
+            var maxFileSizeBytes = long.Parse(_configuration["FileUpload:MaxFileSizeBytes"] ?? "10485760"); // 10MB padrão
+            var allowedExtensions = (_configuration["FileUpload:AllowedExtensions"] ?? ".pdf,.doc,.docx,.jpg,.jpeg,.png,.gif,.txt")
+                .Split(',', StringSplitOptions.RemoveEmptyEntries)
+                .Select(e => e.Trim().ToLowerInvariant())
+                .ToHashSet();
+
+            // Validar tamanho
+            if (bytes.Length > maxFileSizeBytes)
+            {
+                throw new ArgumentException($"Arquivo muito grande. Tamanho máximo permitido: {maxFileSizeBytes / 1024 / 1024}MB");
+            }
+
+            // Validar extensão
+            var extension = Path.GetExtension(nomeArquivo)?.ToLowerInvariant();
+            if (string.IsNullOrEmpty(extension) || !allowedExtensions.Contains(extension))
+            {
+                throw new ArgumentException($"Tipo de arquivo não permitido. Extensões permitidas: {string.Join(", ", allowedExtensions)}");
+            }
+
+            // Calcular hash do conteúdo
+            using var sha256 = System.Security.Cryptography.SHA256.Create();
+            var hash = sha256.ComputeHash(bytes);
+
+            var anexo = new ChamadoAnexo
+            {
+                ChamadoId = chamadoId,
+                TenantId = tenantId,
+                NomeArquivo = nomeArquivo,
+                ContentType = contentType,
+                TamanhoBytes = bytes.Length,
+                Conteudo = bytes,
+                HashConteudo = hash,
+                DataCriacao = DateTime.UtcNow,
+                Excluido = false
+            };
+
+            await _anexosRepository.AdicionarAsync(anexo, ct);
         }
 
-        public async Task<ChamadoDetailDto> AdicionarFeedbackAsync(
+        public async Task<ChamadoAnexo?> ObterAnexoAsync(long anexoId, int tenantId, CancellationToken ct)
+        {
+            return await _anexosRepository.ObterPorIdAsync(anexoId, tenantId, ct);
+        }
+
+        public async Task<IReadOnlyList<ChamadoAnexo>> ListarAnexosAsync(long chamadoId, CancellationToken ct)
+        {
+            return await _anexosRepository.ListarPorChamadoAsync((int)chamadoId, ct);
+        }
+
+        public async Task<EstatisticasChamadosDto> ObterEstatisticasAsync(
             int tenantId,
-            long chamadoId,
-            int? usuarioId,
-            FeedbackRequest request,
+            int? solicitanteUsuarioId,
             CancellationToken ct)
         {
-            _logger.LogInformation("Adicionando feedback ao chamado {ChamadoId} para tenant {TenantId}", chamadoId, tenantId);
-            
-            // Validar que o chamado existe e pertence ao tenant
-            var chamado = await _chamadosRepository.ObterAsync(chamadoId, ct);
-            if (chamado == null)
-            {
-                _logger.LogWarning("Tentativa de adicionar feedback em chamado inexistente: {ChamadoId}", chamadoId);
-                throw new InvalidOperationException($"Chamado {chamadoId} não encontrado.");
-            }
+            var (total, abertos, emAndamento, resolvidos, cancelados) = 
+                await _chamadosRepository.ObterEstatisticasAsync(tenantId, solicitanteUsuarioId, ct);
 
-            if (chamado.TenantId != tenantId)
-            {
-                _logger.LogWarning("Tentativa de adicionar feedback em chamado de outro tenant. Chamado: {ChamadoId}, Tenant esperado: {TenantId}, Tenant do chamado: {ChamadoTenantId}", 
-                    chamadoId, tenantId, chamado.TenantId);
-                throw new UnauthorizedAccessException("Chamado não pertence ao tenant atual.");
-            }
+            // Obter estatísticas por prioridade
+            var (_, _, _, _, _, porUrgenciaAlta, porUrgenciaMedia, porUrgenciaBaixa) = 
+                await ObterEstatisticasPorPrioridadeAsync(tenantId, solicitanteUsuarioId, ct);
 
-            // Converter o score do DTO para byte
-            byte score = (byte)request.Score;
-
-            chamado = await _chamadosRepository.AdicionarFeedbackAsync(
-                chamadoId, tenantId, usuarioId, score, request.Comentario, ct);
-
-            return new ChamadoDetailDto(
-                chamado.ChamadoId,
-                chamado.Numero,
-                chamado.Titulo,
-                chamado.Descricao,
-                chamado.CategoriaId,
-                (byte)chamado.StatusId,
-                (byte)chamado.PrioridadeId,
-                (byte)chamado.CanalId,
-                chamado.SolicitanteUsuarioId,
-                chamado.ResponsavelUsuarioId,
-                chamado.DataCriacao,
-                chamado.DataAtualizacao
+            return new EstatisticasChamadosDto(
+                total,
+                abertos,
+                emAndamento,
+                resolvidos,
+                cancelados,
+                porUrgenciaAlta,
+                porUrgenciaMedia,
+                porUrgenciaBaixa
             );
         }
 
-        public async Task<IReadOnlyList<InteracaoDto>> ListarInteracoesAsync(
+        private async Task<(int, int, int, int, int, int, int, int)> ObterEstatisticasPorPrioridadeAsync(
             int tenantId,
-            long chamadoId,
+            int? solicitanteUsuarioId,
             CancellationToken ct)
         {
-            _logger.LogInformation("Listando interações do chamado {ChamadoId} para tenant {TenantId}", chamadoId, tenantId);
-
-            // Validar que o chamado existe e pertence ao tenant
-            var chamado = await _chamadosRepository.ObterAsync(chamadoId, ct);
-            if (chamado == null || chamado.TenantId != tenantId)
-            {
-                throw new UnauthorizedAccessException("Chamado não encontrado ou não pertence ao tenant atual.");
-            }
-
-            // Usar método otimizado com JOIN para evitar N+1 query
-            var interacoesComAutor = await _chamadosRepository.ListarInteracoesComAutorAsync(chamadoId, tenantId, ct);
-            
-            var dtos = interacoesComAutor.Select(item => new InteracaoDto(
-                item.Interacao.InteracaoId,
-                item.Interacao.ChamadoId,
-                item.Interacao.AutorUsuarioId,
-                item.AutorNome,
-                (byte)item.Interacao.AutorTipoUsuarioId,
-                (byte)item.Interacao.CanalId,
-                item.Interacao.Mensagem,
-                item.Interacao.Interna,
-                item.Interacao.IA_Gerada,
-                item.Interacao.IA_Modelo,
-                item.Interacao.IA_Confianca,
-                item.Interacao.IA_ResumoRaciocinio,
-                item.Interacao.DataCriacao
-            )).ToList();
-
-            return dtos;
-        }
-
-        public async Task<IReadOnlyList<AnexoDto>> ListarAnexosAsync(
-            int tenantId,
-            long chamadoId,
-            CancellationToken ct)
-        {
-            _logger.LogInformation("Listando anexos do chamado {ChamadoId} para tenant {TenantId}", chamadoId, tenantId);
-
-            // Validar que o chamado existe e pertence ao tenant
-            var chamado = await _chamadosRepository.ObterAsync(chamadoId, ct);
-            if (chamado == null || chamado.TenantId != tenantId)
-            {
-                throw new UnauthorizedAccessException("Chamado não encontrado ou não pertence ao tenant atual.");
-            }
-
-            var anexos = await _chamadosRepository.ListarAnexosAsync(chamadoId, tenantId, ct);
-
-            return anexos.Select(a => new AnexoDto(
-                a.AnexoId,
-                a.ChamadoId,
-                a.InteracaoId,
-                a.NomeArquivo,
-                a.ContentType,
-                a.TamanhoBytes,
-                a.UrlExterna,
-                a.DataCriacao
-            )).ToList();
-        }
-
-        public async Task<(byte[] Conteudo, string NomeArquivo, string ContentType)> DownloadAnexoAsync(
-            int tenantId,
-            long chamadoId,
-            long anexoId,
-            CancellationToken ct)
-        {
-            _logger.LogInformation("Download anexo {AnexoId} do chamado {ChamadoId} para tenant {TenantId}", anexoId, chamadoId, tenantId);
-
-            // Validar que o chamado existe e pertence ao tenant
-            var chamado = await _chamadosRepository.ObterAsync(chamadoId, ct);
-            if (chamado == null || chamado.TenantId != tenantId)
-            {
-                throw new UnauthorizedAccessException("Chamado não encontrado ou não pertence ao tenant atual.");
-            }
-
-            var anexo = await _chamadosRepository.ObterAnexoAsync(anexoId, tenantId, ct);
-            if (anexo == null || anexo.ChamadoId != chamadoId)
-            {
-                throw new InvalidOperationException("Anexo não encontrado ou não pertence ao chamado.");
-            }
-
-            if (anexo.Conteudo == null)
-            {
-                throw new InvalidOperationException("Conteúdo do anexo não disponível.");
-            }
-
-            return (anexo.Conteudo, anexo.NomeArquivo, anexo.ContentType ?? "application/octet-stream");
-        }
-
-        public async Task<ChamadoDetailDto> AtualizarAsync(
-            int tenantId,
-            long chamadoId,
-            int usuarioId,
-            AtualizarChamadoRequest request,
-            CancellationToken ct)
-        {
-            _logger.LogInformation("Atualizando chamado {ChamadoId} para tenant {TenantId}", chamadoId, tenantId);
-
-            // Validar que o chamado existe e pertence ao tenant
-            var chamadoAtual = await _chamadosRepository.ObterAsync(chamadoId, ct);
-            if (chamadoAtual == null || chamadoAtual.TenantId != tenantId)
-            {
-                throw new UnauthorizedAccessException("Chamado não encontrado ou não pertence ao tenant atual.");
-            }
-
-            // Validar categoria (se fornecida)
-            if (request.CategoriaId.HasValue)
-            {
-                var categorias = await _categoriasRepository.ListarAtivasAsync(tenantId, ct);
-                var categoria = categorias.FirstOrDefault(c => c.CategoriaId == request.CategoriaId.Value);
-                if (categoria == null)
-                {
-                    throw new InvalidOperationException($"Categoria {request.CategoriaId.Value} não encontrada ou inativa para este tenant.");
-                }
-            }
-
-            var chamado = await _chamadosRepository.AtualizarAsync(
-                chamadoId,
-                tenantId,
-                request.Titulo,
-                request.Descricao,
-                request.CategoriaId,
-                request.PrioridadeId,
-                usuarioId,
-                request.MotivoAlteracao,
+            // Buscar todos os chamados para calcular por prioridade
+            var (chamados, _) = await _chamadosRepository.ListaAsync(
+                tenantId, 
+                null, 
+                null, 
+                solicitanteUsuarioId, 
+                1, 
+                int.MaxValue, 
                 ct);
 
-            return new ChamadoDetailDto(
-                chamado.ChamadoId,
-                chamado.Numero,
-                chamado.Titulo,
-                chamado.Descricao,
-                chamado.CategoriaId,
-                (byte)chamado.StatusId,
-                (byte)chamado.PrioridadeId,
-                (byte)chamado.CanalId,
-                chamado.SolicitanteUsuarioId,
-                chamado.ResponsavelUsuarioId,
-                chamado.DataCriacao,
-                chamado.DataAtualizacao
-            );
+            var porUrgenciaAlta = chamados.Count(c => (byte)c.PrioridadeId == 4);
+            var porUrgenciaMedia = chamados.Count(c => (byte)c.PrioridadeId == 2 || (byte)c.PrioridadeId == 3);
+            var porUrgenciaBaixa = chamados.Count(c => (byte)c.PrioridadeId == 1);
+
+            return (0, 0, 0, 0, 0, porUrgenciaAlta, porUrgenciaMedia, porUrgenciaBaixa);
         }
 
-        public async Task<ChamadoDetailDto> AtribuirResponsavelAsync(
-            int tenantId,
+        public async Task RegistrarFeedbackAsync(
             long chamadoId,
+            int tenantId,
             int usuarioId,
-            AtribuirResponsavelRequest request,
+            IAFeedbackScoreDto score,
+            string? comentario,
             CancellationToken ct)
         {
-            _logger.LogInformation("Atribuindo responsável ao chamado {ChamadoId} para tenant {TenantId}", chamadoId, tenantId);
+            // Validar chamado existe
+            var chamado = await _chamadosRepository.ObterAsync(chamadoId, ct);
+            if (chamado == null || chamado.TenantId != tenantId)
+                throw new ArgumentException("Chamado não encontrado.");
 
-            // Validar que o chamado existe e pertence ao tenant
-            var chamadoAtual = await _chamadosRepository.ObterAsync(chamadoId, ct);
-            if (chamadoAtual == null || chamadoAtual.TenantId != tenantId)
-            {
-                throw new UnauthorizedAccessException("Chamado não encontrado ou não pertence ao tenant atual.");
-            }
+            // Converter DTO para enum domain
+            var scoreEnum = (IAFeedbackScore)(byte)score;
 
-            // Validar responsável (se fornecido)
-            if (request.ResponsavelUsuarioId.HasValue)
-            {
-                var responsavel = await _usuariosRepository.ObterPorIdAsync(request.ResponsavelUsuarioId.Value, ct);
-                if (responsavel == null || responsavel.TenantId != tenantId || !responsavel.Ativo || responsavel.Excluido)
-                {
-                    throw new InvalidOperationException("Responsável inválido, inativo ou não pertence ao tenant.");
-                }
-
-                // Responsável deve ser Técnico ou Admin
-                if (responsavel.TipoUsuarioId != TipoUsuarios.Tecnico &&
-                    responsavel.TipoUsuarioId != TipoUsuarios.Administrador)
-                {
-                    throw new InvalidOperationException("Responsável deve ser Técnico ou Administrador.");
-                }
-            }
-
-            var chamado = await _chamadosRepository.AtribuirResponsavelAsync(
-                chamadoId,
+            await _feedbackRepository.AdicionarAsync(
                 tenantId,
-                request.ResponsavelUsuarioId,
+                chamadoId,
+                null, // interacaoId
                 usuarioId,
-                request.Motivo,
+                scoreEnum,
+                comentario,
                 ct);
-
-            // IMPORTANTE: Calcular SLA quando responsável é atribuído
-            // Isso pode ser feito na stored procedure, mas se não for, adicionar aqui
-
-            return new ChamadoDetailDto(
-                chamado.ChamadoId,
-                chamado.Numero,
-                chamado.Titulo,
-                chamado.Descricao,
-                chamado.CategoriaId,
-                (byte)chamado.StatusId,
-                (byte)chamado.PrioridadeId,
-                (byte)chamado.CanalId,
-                chamado.SolicitanteUsuarioId,
-                chamado.ResponsavelUsuarioId,
-                chamado.DataCriacao,
-                chamado.DataAtualizacao
-            );
-        }
-
-        public async Task<IReadOnlyList<StatusHistoricoDto>> ListarHistoricoStatusAsync(
-            int tenantId,
-            long chamadoId,
-            CancellationToken ct)
-        {
-            _logger.LogInformation("Listando histórico de status do chamado {ChamadoId} para tenant {TenantId}", chamadoId, tenantId);
-
-            // Validar que o chamado existe e pertence ao tenant
-            var chamado = await _chamadosRepository.ObterAsync(chamadoId, ct);
-            if (chamado == null || chamado.TenantId != tenantId)
-            {
-                throw new UnauthorizedAccessException("Chamado não encontrado ou não pertence ao tenant atual.");
-            }
-
-            var historicos = await _chamadosRepository.ListarHistoricoStatusAsync(chamadoId, tenantId, ct);
-
-            return historicos.Select(h => new StatusHistoricoDto(
-                h.Historico.HistoricoId,
-                h.Historico.ChamadoId,
-                h.Historico.StatusAntigoId?.ToString(),
-                h.Historico.StatusNovoId.ToString(),
-                h.Historico.AlteradoPorUsuarioId,
-                h.AlteradoPorNome,
-                h.Historico.Motivo,
-                h.Historico.DataAlteracao
-            )).ToList();
-        }
-
-        public async Task DeletarAsync(
-            int tenantId,
-            long chamadoId,
-            int usuarioId,
-            string motivo,
-            CancellationToken ct)
-        {
-            _logger.LogInformation("Deletando chamado {ChamadoId} para tenant {TenantId}", chamadoId, tenantId);
-
-            if (string.IsNullOrWhiteSpace(motivo))
-            {
-                throw new ArgumentException("Motivo da exclusão é obrigatório.");
-            }
-
-            // Validar que o chamado existe e pertence ao tenant
-            var chamado = await _chamadosRepository.ObterAsync(chamadoId, ct);
-            if (chamado == null || chamado.TenantId != tenantId)
-            {
-                throw new UnauthorizedAccessException("Chamado não encontrado ou não pertence ao tenant atual.");
-            }
-
-            // Validar que chamado fechado não pode ser deletado (apenas cancelado)
-            if (chamado.StatusId == StatusChamado.Fechado)
-            {
-                throw new InvalidOperationException("Chamado fechado não pode ser deletado.");
-            }
-
-            await _chamadosRepository.DeletarAsync(chamadoId, tenantId, usuarioId, motivo, ct);
-
-            _logger.LogInformation("Chamado {ChamadoId} deletado com sucesso. Motivo: {Motivo}", chamadoId, motivo);
         }
     }
 }

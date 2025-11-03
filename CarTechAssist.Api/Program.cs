@@ -1,14 +1,13 @@
 using System.Data;
-using Microsoft.Data.SqlClient;
 using System.Text;
-using CarTechAssist.Api.Middleware;
-using CarTechAssist.Application.Services;
-using CarTechAssist.Application.Validators;
-using CarTechAssist.Domain.Interfaces;
-using CarTechAssist.Infrastruture.Repositories;
-using FluentValidation.AspNetCore;
+using Microsoft.Data.SqlClient;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.AspNetCore.SignalR;
+using CarTechAssist.Application.Services;
+using CarTechAssist.Domain.Interfaces;
+using CarTechAssist.Infrastruture.Repositories;
+using CarTechAssist.Api.Hubs;
 
 namespace CarTechAssist.Api
 {
@@ -16,67 +15,35 @@ namespace CarTechAssist.Api
     {
         public static void Main(string[] args)
         {
-            try
-            {
-                var builder = WebApplication.CreateBuilder(args);
-                var configuration = builder.Configuration;
+            var builder = WebApplication.CreateBuilder(args);
+            var configuration = builder.Configuration;
 
             // Database Connection
-            var connectionString = configuration.GetConnectionString("DefaultConnection") 
-                ?? Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection")
-                ?? throw new InvalidOperationException("Connection string não configurada.");
-            
-            // Adiciona configurações de pooling e timeout à connection string se não existirem
-            var connectionStringBuilder = new SqlConnectionStringBuilder(connectionString)
-            {
-                // Configurações de performance e confiabilidade
-                MaxPoolSize = 100, // Máximo de conexões no pool
-                MinPoolSize = 5,   // Mínimo de conexões no pool
-                ConnectTimeout = 30, // Timeout de conexão em segundos
-                // Habilita retry logic (SQL Server 2019+)
-                // Múltiplas tentativas de conexão
-                ConnectRetryCount = 3,
-                ConnectRetryInterval = 10,
-                // Configurações adicionais de segurança e performance
-                TrustServerCertificate = builder.Environment.IsDevelopment(), // Permite certificado self-signed em dev
-                Encrypt = true // Sempre criptografar conexão
-            };
-            
             builder.Services.AddScoped<IDbConnection>(sp =>
-                new SqlConnection(connectionStringBuilder.ConnectionString));
+                new SqlConnection(configuration.GetConnectionString("DefaultConnection")));
 
             // Repositories
             builder.Services.AddScoped<IChamadosRepository, ChamadosRepository>();
             builder.Services.AddScoped<IUsuariosRepository, UsuariosRepository>();
+            builder.Services.AddScoped<IRecuperacaoSenhaRepository, RecuperacaoSenhaRepository>();
             builder.Services.AddScoped<ICategoriasRepository, CategoriasRepository>();
             builder.Services.AddScoped<IAnexosReposity, AnexosRepository>();
-            builder.Services.AddScoped<Domain.Interfaces.IRecuperacaoSenhaRepository, RecuperacaoSenhaRepository>();
+            builder.Services.AddScoped<IFeedbackRepository, FeedbackRepository>();
 
             // Services
-            builder.Services.AddScoped<ChamadosService>();
-            builder.Services.AddScoped<UsuariosService>();
             builder.Services.AddScoped<AuthService>();
-            builder.Services.AddScoped<CategoriasService>();
             builder.Services.AddScoped<EmailService>();
             builder.Services.AddScoped<RecuperacaoSenhaService>();
+            builder.Services.AddScoped<ChamadosService>();
+            builder.Services.AddScoped<UsuariosService>();
+            builder.Services.AddScoped<DialogflowService>();
+            builder.Services.AddScoped<ChatBotService>();
+            builder.Services.AddScoped<CategoriasService>();
 
             // JWT Authentication
-            var jwtSecretKey = configuration["Jwt:SecretKey"] 
-                ?? Environment.GetEnvironmentVariable("JWT__SecretKey")
-                ?? throw new InvalidOperationException("JWT SecretKey não configurada. Verifique appsettings.json ou appsettings.Development.json");
-            
-            if (string.IsNullOrWhiteSpace(jwtSecretKey) || jwtSecretKey.Length < 32)
-            {
-                throw new InvalidOperationException(
-                    $"JWT SecretKey está vazia ou muito curta (mínimo 32 caracteres). Valor atual: {(string.IsNullOrEmpty(jwtSecretKey) ? "(vazio)" : $"{jwtSecretKey.Length} caracteres")}");
-            }
-            
-            var jwtIssuer = configuration["Jwt:Issuer"] 
-                ?? Environment.GetEnvironmentVariable("JWT__Issuer")
-                ?? "CarTechAssist";
-            var jwtAudience = configuration["Jwt:Audience"] 
-                ?? Environment.GetEnvironmentVariable("JWT__Audience")
-                ?? "CarTechAssist";
+            var jwtSecretKey = configuration["Jwt:SecretKey"] ?? throw new InvalidOperationException("JWT SecretKey não configurada");
+            var jwtIssuer = configuration["Jwt:Issuer"] ?? "CarTechAssist";
+            var jwtAudience = configuration["Jwt:Audience"] ?? "CarTechAssist";
 
             builder.Services.AddAuthentication(options =>
             {
@@ -100,35 +67,27 @@ namespace CarTechAssist.Api
 
             builder.Services.AddAuthorization();
 
-            // CORS
-            builder.Services.AddCors(options =>
-            {
-                var allowedOrigins = configuration["Cors:AllowedOrigins"]?.Split(';', StringSplitOptions.RemoveEmptyEntries)
-                    ?? (builder.Environment.IsDevelopment() 
-                        ? new[] { 
-                            "http://localhost:3000", 
-                            "http://localhost:5173",
-                            "http://localhost:5095",
-                            "https://localhost:7045"
-                        }
-                        : Array.Empty<string>());
-
-                options.AddDefaultPolicy(policy =>
-                {
-                    policy.WithOrigins(allowedOrigins)
-                        .AllowAnyMethod()
-                        .AllowAnyHeader()
-                        .AllowCredentials();
-                });
-            });
-
             // Add services to the container.
             builder.Services.AddControllers();
             builder.Services.AddEndpointsApiExplorer();
             builder.Services.AddSwaggerGen();
 
-            // FluentValidation - registra validators automaticamente instalados nos assemblies referenciados
-            builder.Services.AddFluentValidationAutoValidation();
+            // SignalR para chat em tempo real
+            builder.Services.AddSignalR(options =>
+            {
+                options.EnableDetailedErrors = builder.Environment.IsDevelopment();
+            });
+
+            // CORS - Permitir requisições do frontend
+            builder.Services.AddCors(options =>
+            {
+                options.AddPolicy("AllowAll", policy =>
+                {
+                    policy.AllowAnyOrigin()
+                          .AllowAnyMethod()
+                          .AllowAnyHeader();
+                });
+            });
 
             var app = builder.Build();
 
@@ -139,51 +98,20 @@ namespace CarTechAssist.Api
                 app.UseSwaggerUI();
             }
 
-            // Global Exception Handler (deve ser o primeiro)
-            app.UseGlobalExceptionHandler();
-
-            app.UseCors();
-
             app.UseHttpsRedirection();
+
+            // CORS deve vir antes de UseAuthentication/UseAuthorization
+            app.UseCors("AllowAll");
 
             app.UseAuthentication();
             app.UseAuthorization();
 
-            // Middleware para extrair TenantId e UsuarioId do JWT
-            app.UseTenantMiddleware();
-
             app.MapControllers();
 
+            // Mapear SignalR Hub
+            app.MapHub<Hubs.ChamadoHub>("/hubs/chamado");
+
             app.Run();
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine("❌ ERRO FATAL ao iniciar a aplicação:");
-                Console.WriteLine($"   Tipo: {ex.GetType().Name}");
-                Console.WriteLine($"   Mensagem: {ex.Message}");
-                Console.WriteLine("");
-                Console.WriteLine("📋 DETALHES:");
-                Console.WriteLine(ex.ToString());
-                Console.WriteLine("");
-                Console.WriteLine("💡 VERIFICAÇÕES:");
-                
-                if (ex.Message.Contains("JWT") || ex.Message.Contains("SecretKey"))
-                {
-                    Console.WriteLine("   → Verifique se a chave JWT está configurada em appsettings.json ou appsettings.Development.json");
-                    Console.WriteLine("   → A chave deve ter pelo menos 32 caracteres");
-                }
-                
-                if (ex.Message.Contains("Connection") || ex.Message.Contains("database"))
-                {
-                    Console.WriteLine("   → Verifique se a connection string está configurada");
-                    Console.WriteLine("   → Verifique se o SQL Server está rodando");
-                }
-                
-                Console.WriteLine("");
-                Console.WriteLine("Pressione qualquer tecla para sair...");
-                Console.ReadKey();
-                throw; // Re-lança para o sistema operacional registrar o erro
-            }
         }
     }
 }

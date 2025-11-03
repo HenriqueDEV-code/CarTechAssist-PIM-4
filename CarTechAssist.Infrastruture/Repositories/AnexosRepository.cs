@@ -45,6 +45,21 @@ namespace CarTechAssist.Infrastruture.Repositories
 
             return anexos.ToList();
         }
+
+        public async Task<ChamadoAnexo?> ObterPorIdAsync(long anexoId, int tenantId, CancellationToken ct)
+        {
+            const string sql = @"
+                SELECT AnexoId, ChamadoId, InteracaoId, TenantId, NomeArquivo, 
+                       ContentType, TamanhoBytes, Conteudo, UrlExterna, HashConteudo, 
+                       DataCriacao, Excluido, RowVer
+                FROM core.ChamadoAnexo 
+                WHERE AnexoId = @anexoId AND TenantId = @tenantId AND Excluido = 0";
+
+            var anexo = await _db.QueryFirstOrDefaultAsync<ChamadoAnexo>(
+                new CommandDefinition(sql, new { anexoId, tenantId }, cancellationToken: ct));
+
+            return anexo;
+        }
     }
 }
 

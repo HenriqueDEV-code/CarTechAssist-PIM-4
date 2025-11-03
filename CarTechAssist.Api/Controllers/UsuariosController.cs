@@ -1,16 +1,16 @@
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using CarTechAssist.Api.Attributes;
+using Microsoft.AspNetCore.Authorization;
 using CarTechAssist.Application.Services;
 using CarTechAssist.Contracts.Common;
 using CarTechAssist.Contracts.Usuarios;
-using CarTechAssist.Domain.Enums;
+using CarTechAssist.Api.Attributes;
 
 namespace CarTechAssist.Api.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
+    [Authorize]
     public class UsuariosController : ControllerBase
     {
         private readonly UsuariosService _usuariosService;
@@ -20,16 +20,10 @@ namespace CarTechAssist.Api.Controllers
             _usuariosService = usuariosService;
         }
 
-        private int GetTenantId()
-        {
-            var tenantIdHeader = Request.Headers["X-Tenant-Id"].FirstOrDefault();
-            if (string.IsNullOrEmpty(tenantIdHeader) || !int.TryParse(tenantIdHeader, out var tenantId))
-                throw new UnauthorizedAccessException("TenantId não encontrado ou inválido no header X-Tenant-Id.");
-            return tenantId;
-        }
+        private int GetTenantId() => int.Parse(Request.Headers["X-Tenant-Id"].FirstOrDefault() ?? "1");
 
         [HttpGet]
-        [Authorize] // Requer autenticação
+        [AuthorizeRoles(1, 2, 3)] // Cliente(1), Agente(2), Admin(3) podem listar usuários
         public async Task<ActionResult<PagedResult<UsuarioDto>>> Listar(
             [FromQuery] byte? tipo,
             [FromQuery] bool? ativo,
@@ -37,62 +31,28 @@ namespace CarTechAssist.Api.Controllers
             [FromQuery] int pageSize = 20,
             CancellationToken ct = default)
         {
-            // Validação de parâmetros de paginação
-            if (page < 1)
-                return BadRequest("O parâmetro 'page' deve ser maior ou igual a 1.");
-            
-            if (pageSize < 1 || pageSize > 100)
-                return BadRequest("O parâmetro 'pageSize' deve estar entre 1 e 100.");
-
             var result = await _usuariosService.ListarAsync(
                 GetTenantId(), tipo, ativo, page, pageSize, ct);
             return Ok(result);
         }
 
         [HttpGet("{id:int}")]
-        [Authorize] // Requer autenticação
         public async Task<ActionResult<UsuarioDto>> Obter(int id, CancellationToken ct = default)
         {
-            var result = await _usuariosService.ObterAsync(GetTenantId(), id, ct);
+            var result = await _usuariosService.ObterAsync(id, ct);
             if (result == null) return NotFound();
             return Ok(result);
         }
 
         [HttpPost]
-        // Permite criar usuários sem autenticação apenas para registro de clientes
-        // Se não for cliente, requer autenticação de admin
+        [AuthorizeRoles(3)] // Apenas Admin(3) pode criar usuários
         public async Task<ActionResult<UsuarioDto>> Criar(
             [FromBody] CriarUsuarioRequest request,
             CancellationToken ct = default)
         {
             try
             {
-                // Validar que apenas clientes podem se registrar sem autenticação
-                // Se for outro tipo de usuário, requer autenticação de admin
-                var isAuthenticated = User?.Identity?.IsAuthenticated == true;
-                
-                if (request.TipoUsuarioId != 1 && !isAuthenticated) // 1 = Cliente
-                {
-                    return Unauthorized("Apenas clientes podem se registrar publicamente. Para criar técnicos ou administradores, é necessário estar autenticado como administrador.");
-                }
-
-                // Se autenticado, verificar se é admin (apenas admins podem criar não-clientes)
-                if (isAuthenticated && request.TipoUsuarioId != 1 && User != null)
-                {
-                    var roleClaim = User.FindFirst(System.Security.Claims.ClaimTypes.Role);
-                    if (roleClaim == null || !byte.TryParse(roleClaim.Value, out var userRole) || userRole != 3) // 3 = Administrador
-                    {
-                        return Forbid("Apenas administradores podem criar usuários técnicos ou outros administradores.");
-                    }
-                }
-
-                // Tenta pegar TenantId do header, senão usa 1 como padrão
-                var tenantIdHeader = Request.Headers["X-Tenant-Id"].FirstOrDefault();
-                var tenantId = !string.IsNullOrEmpty(tenantIdHeader) && int.TryParse(tenantIdHeader, out var parsedTenantId)
-                    ? parsedTenantId 
-                    : 1;
-            
-                var result = await _usuariosService.CriarAsync(tenantId, request, ct);
+                var result = await _usuariosService.CriarAsync(GetTenantId(), request, ct);
                 return CreatedAtAction(nameof(Obter), new { id = result.UsuarioId }, result);
             }
             catch (InvalidOperationException ex)
@@ -102,6 +62,7 @@ namespace CarTechAssist.Api.Controllers
         }
 
         [HttpPut("{id:int}")]
+        [AuthorizeRoles(3)] // Apenas Admin(3) pode atualizar usuários
         public async Task<ActionResult<UsuarioDto>> Atualizar(
             int id,
             [FromBody] AtualizarUsuarioRequest request,
@@ -123,51 +84,25 @@ namespace CarTechAssist.Api.Controllers
         }
 
         [HttpPatch("{id:int}/ativacao")]
-        [AuthorizeRoles((byte)Domain.Enums.TipoUsuarios.Administrador, (byte)Domain.Enums.TipoUsuarios.Tecnico)] // Admin e Técnico podem ativar/desativar
+        [AuthorizeRoles(3)] // Apenas Admin(3) pode ativar/desativar usuários
         public async Task<IActionResult> AlterarAtivacao(
             int id,
             [FromBody] AlterarAtivacaoRequest request,
             CancellationToken ct = default)
         {
-            try
-            {
-                await _usuariosService.AlterarAtivacaoAsync(GetTenantId(), id, request.Ativo, ct);
-                return Ok();
-            }
-            catch (InvalidOperationException ex)
-            {
-                return NotFound(ex.Message);
-            }
-            catch (UnauthorizedAccessException ex)
-            {
-                return Unauthorized(ex.Message);
-            }
+            await _usuariosService.AlterarAtivacaoAsync(id, request.Ativo, ct);
+            return Ok();
         }
 
         [HttpPost("{id:int}/reset-senha")]
-        [AuthorizeRoles((byte)Domain.Enums.TipoUsuarios.Administrador, (byte)Domain.Enums.TipoUsuarios.Tecnico)] // Admin e Técnico podem resetar senhas
+        [AuthorizeRoles(3)] // Apenas Admin(3) pode resetar senhas
         public async Task<IActionResult> ResetSenha(
             int id,
             [FromBody] ResetSenhaRequest request,
             CancellationToken ct = default)
         {
-            try
-            {
-                await _usuariosService.ResetSenhaAsync(GetTenantId(), id, request.NovaSenha, ct);
-                return Ok(new { message = "Senha resetada com sucesso." });
-            }
-            catch (InvalidOperationException ex)
-            {
-                return NotFound(ex.Message);
-            }
-            catch (UnauthorizedAccessException ex)
-            {
-                return Unauthorized(ex.Message);
-            }
-            catch (ArgumentException ex)
-            {
-                return BadRequest(ex.Message);
-            }
+            await _usuariosService.ResetSenhaAsync(id, request.NovaSenha, ct);
+            return Ok();
         }
     }
 }
