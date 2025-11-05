@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.DependencyInjection;
 using CarTechAssist.Application.Services;
 using CarTechAssist.Contracts.Common;
 using CarTechAssist.Contracts.Enums;
@@ -19,10 +21,86 @@ namespace CarTechAssist.Api.Controllers
             _chamadosService = chamadosService;
         }
 
-        private int GetTenantId() => int.Parse(Request.Headers["X-Tenant-Id"].FirstOrDefault() ?? "1");
-        private int GetUsuarioId() => int.Parse(Request.Headers["X-Usuario-Id"].FirstOrDefault() ?? "1");
+        /// <summary>
+        /// CORREÇÃO: Obter TenantId com validação e correspondência com JWT
+        /// Retorna o TenantId do header ou do JWT, lançando exceção apenas se realmente necessário
+        /// </summary>
+        private int GetTenantId()
+        {
+            // Tentar obter do header primeiro
+            var tenantIdHeader = Request.Headers["X-Tenant-Id"].FirstOrDefault();
+            if (!string.IsNullOrEmpty(tenantIdHeader) && int.TryParse(tenantIdHeader, out var tenantId) && tenantId > 0)
+            {
+                // Se autenticado, validar correspondência com JWT
+                if (User?.Identity?.IsAuthenticated == true)
+                {
+                    var jwtTenantId = User.FindFirst("TenantId")?.Value;
+                    if (!string.IsNullOrEmpty(jwtTenantId) && int.TryParse(jwtTenantId, out var jwtTenant))
+                    {
+                        if (jwtTenant != tenantId)
+                        {
+                            throw new UnauthorizedAccessException("TenantId do header não corresponde ao token JWT.");
+                        }
+                    }
+                }
+                return tenantId;
+            }
+
+            // Se não tem no header, tentar obter do JWT
+            if (User?.Identity?.IsAuthenticated == true)
+            {
+                var jwtTenantId = User.FindFirst("TenantId")?.Value;
+                if (!string.IsNullOrEmpty(jwtTenantId) && int.TryParse(jwtTenantId, out var jwtTenant) && jwtTenant > 0)
+                {
+                    return jwtTenant;
+                }
+            }
+
+            // Se não encontrou em lugar nenhum, lançar exceção
+            throw new UnauthorizedAccessException("TenantId não encontrado no header X-Tenant-Id ou no token JWT. Faça login primeiro ou forneça o header X-Tenant-Id.");
+        }
+
+        /// <summary>
+        /// CORREÇÃO: Obter UsuarioId com validação e correspondência com JWT
+        /// Retorna o UsuarioId do header ou do JWT, lançando exceção apenas se realmente necessário
+        /// </summary>
+        private int GetUsuarioId()
+        {
+            // Tentar obter do header primeiro
+            var usuarioIdHeader = Request.Headers["X-Usuario-Id"].FirstOrDefault();
+            if (!string.IsNullOrEmpty(usuarioIdHeader) && int.TryParse(usuarioIdHeader, out var usuarioId) && usuarioId > 0)
+            {
+                // Se autenticado, validar correspondência com JWT
+                if (User?.Identity?.IsAuthenticated == true)
+                {
+                    var jwtUsuarioId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                    if (!string.IsNullOrEmpty(jwtUsuarioId) && int.TryParse(jwtUsuarioId, out var jwtUsuario))
+                    {
+                        if (jwtUsuario != usuarioId)
+                        {
+                            throw new UnauthorizedAccessException("UsuarioId do header não corresponde ao token JWT.");
+                        }
+                    }
+                }
+                return usuarioId;
+            }
+
+            // Se não tem no header, tentar obter do JWT
+            if (User?.Identity?.IsAuthenticated == true)
+            {
+                var jwtUsuarioId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                if (!string.IsNullOrEmpty(jwtUsuarioId) && int.TryParse(jwtUsuarioId, out var jwtUsuario) && jwtUsuario > 0)
+                {
+                    return jwtUsuario;
+                }
+            }
+
+            // Se não encontrou em lugar nenhum, lançar exceção
+            throw new UnauthorizedAccessException("UsuarioId não encontrado no header X-Usuario-Id ou no token JWT. Faça login primeiro ou forneça o header X-Usuario-Id.");
+        }
 
         [HttpGet]
+        [Microsoft.AspNetCore.Authorization.Authorize]
         public async Task<ActionResult<PagedResult<TicketView>>> Listar(
             [FromQuery] byte? statusId,
             [FromQuery] int? responsavelUsuarioId,
@@ -31,20 +109,47 @@ namespace CarTechAssist.Api.Controllers
             [FromQuery] int pageSize = 20,
             CancellationToken ct = default)
         {
-            // Se for Cliente (TipoUsuarioId = 1), filtrar apenas seus próprios chamados
-            var tipoUsuarioIdStr = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value;
-            if (byte.TryParse(tipoUsuarioIdStr, out var tipoUsuarioId) && tipoUsuarioId == 1)
-            {
-                // Cliente só pode ver seus próprios chamados
-                solicitanteUsuarioId = GetUsuarioId();
-            }
+            // CORREÇÃO CRÍTICA: Validação de pageSize para prevenir DoS
+            const int maxPageSize = 100;
+            if (pageSize > maxPageSize)
+                pageSize = maxPageSize;
+            if (pageSize < 1)
+                pageSize = 20;
+            if (page < 1)
+                page = 1;
 
-            var result = await _chamadosService.ListarAsync(
-                GetTenantId(), statusId, responsavelUsuarioId, solicitanteUsuarioId, page, pageSize, ct);
-            return Ok(result);
+            try
+            {
+                var tenantId = GetTenantId();
+
+                // Se for Cliente (TipoUsuarioId = 1), filtrar apenas seus próprios chamados
+                var tipoUsuarioIdStr = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value;
+                if (byte.TryParse(tipoUsuarioIdStr, out var tipoUsuarioId) && tipoUsuarioId == 1)
+                {
+                    // Cliente só pode ver seus próprios chamados
+                    solicitanteUsuarioId = GetUsuarioId();
+                }
+
+                var result = await _chamadosService.ListarAsync(
+                    tenantId, statusId, responsavelUsuarioId, solicitanteUsuarioId, page, pageSize, ct);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                // Log do erro para debug
+                var logger = HttpContext.RequestServices.GetRequiredService<ILogger<ChamadosController>>();
+                logger.LogError(ex, "Erro ao listar chamados. TenantId: {TenantId}, StatusId: {StatusId}, SolicitanteUsuarioId: {SolicitanteUsuarioId}",
+                    GetTenantId(), statusId, solicitanteUsuarioId);
+                
+                return StatusCode(500, new { 
+                    error = "Erro interno ao listar chamados", 
+                    message = ex.Message 
+                });
+            }
         }
 
         [HttpGet("{id:long}")]
+        [Microsoft.AspNetCore.Authorization.Authorize]
         public async Task<ActionResult<ChamadoDetailDto>> Obter(long id, CancellationToken ct = default)
         {
             try
@@ -68,16 +173,59 @@ namespace CarTechAssist.Api.Controllers
             }
         }
 
+      
         [HttpPost]
+        [Microsoft.AspNetCore.Authorization.Authorize]
+        [ProducesResponseType(typeof(ChamadoDetailDto), StatusCodes.Status201Created)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        [ProducesResponseType(StatusCodes.Status500InternalServerError)]
         public async Task<ActionResult<ChamadoDetailDto>> Criar(
             [FromBody] CriarChamadoRequest request,
             CancellationToken ct = default)
         {
-            var result = await _chamadosService.CriarAsync(GetTenantId(), request, ct);
-            return CreatedAtAction(nameof(Obter), new { id = result.ChamadoId }, result);
+            try
+            {
+                // Garantir que o SolicitanteUsuarioId seja sempre o usuário autenticado
+                var usuarioIdAutenticado = GetUsuarioId();
+                var tenantId = GetTenantId();
+                
+                // Criar novo request com SolicitanteUsuarioId corrigido
+                var requestCorrigido = new CriarChamadoRequest(
+                    Titulo: request.Titulo,
+                    Descricao: request.Descricao,
+                    CategoriaId: request.CategoriaId,
+                    PrioridadeId: request.PrioridadeId,
+                    CanalId: request.CanalId,
+                    SolicitanteUsuarioId: usuarioIdAutenticado, // SEMPRE usar o usuário autenticado
+                    ResponsavelUsuarioId: request.ResponsavelUsuarioId, // Manter responsável se fornecido
+                    SLA_EstimadoFim: request.SLA_EstimadoFim // Manter SLA se fornecido, senão será calculado
+                );
+                
+                var result = await _chamadosService.CriarAsync(tenantId, requestCorrigido, ct);
+                return CreatedAtAction(nameof(Obter), new { id = result.ChamadoId }, result);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { message = ex.Message, error = "Erro de validação" });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return StatusCode(403, new { message = ex.Message, error = "Erro de permissão" });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message, error = "Erro de operação" });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = ex.Message, error = "Erro interno do servidor" });
+            }
         }
 
         [HttpGet("{id:long}/interacoes")]
+        [Microsoft.AspNetCore.Authorization.Authorize]
         public async Task<ActionResult<IReadOnlyList<InteracaoDto>>> ListarInteracoes(
             long id,
             CancellationToken ct = default)
@@ -87,6 +235,7 @@ namespace CarTechAssist.Api.Controllers
         }
 
         [HttpPost("{id:long}/interacoes")]
+        [Microsoft.AspNetCore.Authorization.Authorize]
         public async Task<IActionResult> AdicionarInteracao(
             long id,
             [FromBody] AdicionarInteracaoRequest request,

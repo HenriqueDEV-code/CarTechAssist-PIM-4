@@ -1,9 +1,9 @@
 {
   "ConnectionStrings": {
-    "DefaultConnection": ""
+    "DefaultConnection": "Server=localhost;Database=CarTechAssist;User Id=sa;Password=YourPassword;TrustServerCertificate=true;"
   },
   "Jwt": {
-    "SecretKey": "",
+    "SecretKey": "YourSecretKeyHere-MustBeAtLeast32CharactersLong",
     "Issuer": "CarTechAssist",
     "Audience": "CarTechAssist",
     "AccessTokenExpirationMinutes": "15",
@@ -12,7 +12,7 @@
   "Email": {
     "SmtpServer": "smtp.gmail.com",
     "SmtpPort": "587",
-    "SmtpUser": "",
+    "SmtpUser": "your-email@gmail.com",
     "SmtpPassword": ""
   },
   "Dialogflow": {
@@ -42,3 +42,4 @@
   },
   "AllowedHosts": "*"
 }
+

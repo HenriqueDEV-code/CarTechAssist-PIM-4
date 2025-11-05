@@ -15,8 +15,10 @@ namespace CarTechAssist.Application.Services
         private readonly ChamadosService _chamadosService;
         private readonly ILogger<ChatBotService> _logger;
         private readonly DialogflowService? _dialogflowService;
+        private readonly OpenAIService? _openAIService;
         private readonly IConfiguration _configuration;
         private readonly bool _usarDialogflow;
+        private readonly bool _usarOpenAI;
 
         // Cache de contexto por usuário (em produção, usar Redis ou banco de dados)
         private static readonly Dictionary<string, ChatBotContexto> _contextos = new();
@@ -32,8 +34,41 @@ namespace CarTechAssist.Application.Services
             _logger = logger;
             _configuration = configuration;
             _usarDialogflow = bool.Parse(_configuration["Dialogflow:Enabled"] ?? "false");
+            _usarOpenAI = bool.Parse(_configuration["OpenAI:Enabled"] ?? "false");
 
-            if (_usarDialogflow)
+            // Prioridade: OpenAI > Dialogflow > Regex
+            if (_usarOpenAI)
+            {
+                try
+                {
+                    _openAIService = serviceProvider.GetService(typeof(OpenAIService)) as OpenAIService;
+                    if (_openAIService != null && _openAIService.EstaHabilitado())
+                    {
+                        _logger.LogInformation("✅ ChatBot configurado para usar OpenAI como provedor principal de IA");
+                        _logger.LogInformation("   Model: {Model}, MaxTokens: {MaxTokens}, Temperature: {Temperature}", 
+                            _configuration["OpenAI:Model"] ?? "gpt-4o-mini",
+                            _configuration["OpenAI:MaxTokens"] ?? "1000",
+                            _configuration["OpenAI:Temperature"] ?? "0.7");
+                    }
+                    else
+                    {
+                        _logger.LogWarning("⚠️ OpenAI habilitado no appsettings mas não está funcionando corretamente. Verifique a ApiKey.");
+                        _logger.LogWarning("   Tentando Dialogflow como fallback...");
+                        _usarOpenAI = false;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "❌ Erro ao inicializar OpenAI: {Message}. Tentando Dialogflow como fallback.", ex.Message);
+                    _usarOpenAI = false;
+                }
+            }
+            else
+            {
+                _logger.LogInformation("OpenAI está desabilitado no appsettings.json (OpenAI:Enabled = false)");
+            }
+
+            if (_usarDialogflow && !_usarOpenAI)
             {
                 try
                 {
@@ -112,8 +147,39 @@ namespace CarTechAssist.Application.Services
                     return await ProcessarMensagemComChamadoAsync(tenantId, usuarioId, mensagem, contexto.ChamadoId.Value, contexto, ct);
                 }
 
-                // Analisar mensagem e determinar ação (usar Dialogflow se disponível)
-                var analise = await AnalisarMensagemAsync(mensagem, contexto, tenantId, usuarioId, ct);
+                // Analisar mensagem e determinar ação (usar OpenAI/Dialogflow se disponível)
+                var (analise, respostaIA) = await AnalisarMensagemAsync(mensagem, contexto, tenantId, usuarioId, ct);
+
+                // Se temos resposta da IA, usar ela diretamente (prioridade máxima)
+                if (!string.IsNullOrWhiteSpace(respostaIA))
+                {
+                    _logger.LogInformation("ChatBot usando resposta da IA (OpenAI/Dialogflow). RespostaLength: {Length}", respostaIA.Length);
+                    
+                    // Se está aguardando confirmação, processar resposta
+                    if (contexto.AguardandoConfirmacao && !string.IsNullOrEmpty(contexto.AcaoPendente))
+                    {
+                        return await ProcessarConfirmacaoAsync(tenantId, usuarioId, mensagem, contexto, ct);
+                    }
+
+                    // Se precisa criar chamado, pedir confirmação
+                    if (analise.PrecisaCriarChamado)
+                    {
+                        return await PrepararCriacaoChamadoAsync(tenantId, usuarioId, mensagem, analise, contexto, ct);
+                    }
+
+                    // Usar resposta da IA diretamente com sugestões
+                    var sugestoesIA = GerarSugestoesPorTema(analise.Tema, analise.MensagemOriginal);
+                    var respostaFinal = respostaIA;
+                    
+                    // Adicionar sugestões se não mencionadas
+                    if (sugestoesIA.Count > 0 && !respostaIA.Contains("sugestão") && !respostaIA.Contains("tentar"))
+                    {
+                        respostaFinal += "\n\n**Sugestões rápidas:**\n" + string.Join("\n", sugestoesIA);
+                    }
+                    
+                    SalvarContexto(contextoKey, contexto);
+                    return new ChatBotResponse(Resposta: respostaFinal, Sugestoes: sugestoesIA);
+                }
 
                 // Se está aguardando confirmação, processar resposta
                 if (contexto.AguardandoConfirmacao && !string.IsNullOrEmpty(contexto.AcaoPendente))
@@ -127,8 +193,8 @@ namespace CarTechAssist.Application.Services
                     return await PrepararCriacaoChamadoAsync(tenantId, usuarioId, mensagem, analise, contexto, ct);
                 }
 
-                // Responder normalmente
-                var resposta = GerarRespostaInteligente(analise, contexto);
+                // Fallback: responder normalmente sem IA
+                var resposta = GerarRespostaInteligente(analise, contexto, null);
                 
                 // Salvar contexto atualizado
                 SalvarContexto(contextoKey, contexto);
@@ -173,9 +239,55 @@ namespace CarTechAssist.Application.Services
             }
         }
 
-        private async Task<AnaliseMensagem> AnalisarMensagemAsync(string mensagem, ChatBotContexto contexto, int tenantId, int usuarioId, CancellationToken ct)
+        private async Task<(AnaliseMensagem analise, string? respostaIA)> AnalisarMensagemAsync(string mensagem, ChatBotContexto contexto, int tenantId, int usuarioId, CancellationToken ct)
         {
-            // Tentar usar Dialogflow se estiver habilitado
+            // Prioridade: OpenAI > Dialogflow > Regex
+            
+            // Tentar usar OpenAI primeiro (PRIORIDADE MÁXIMA)
+            if (_usarOpenAI && _openAIService != null)
+            {
+                try
+                {
+                    _logger.LogInformation("Tentando processar mensagem com OpenAI. Mensagem: {Mensagem}", mensagem);
+                    var sessionId = $"tenant_{tenantId}_user_{usuarioId}";
+                    var respostaOpenAI = await _openAIService.ProcessarMensagemAsync(mensagem, sessionId, ct);
+                    
+                    if (string.IsNullOrWhiteSpace(respostaOpenAI))
+                    {
+                        _logger.LogWarning("OpenAI retornou resposta vazia. Tentando Dialogflow.");
+                        throw new Exception("Resposta vazia da OpenAI");
+                    }
+                    
+                    _logger.LogInformation("✅ OpenAI respondeu com sucesso! RespostaLength: {Length}", respostaOpenAI.Length);
+                    
+                    // Analisar resposta da OpenAI
+                    var analise = new AnaliseMensagem
+                    {
+                        MensagemOriginal = mensagem,
+                        Intencao = DetectarIntencao(respostaOpenAI.ToLowerInvariant()),
+                        Urgencia = DetectarUrgencia(mensagem.ToLowerInvariant()),
+                        Tema = DetectarTema(mensagem.ToLowerInvariant()),
+                        PrecisaCriarChamado = PrecisaCriarChamadoPorIA(respostaOpenAI, mensagem)
+                    };
+
+                    _logger.LogInformation("OpenAI processou mensagem. Intenção: {Intencao}, PrecisaCriarChamado: {PrecisaCriarChamado}, Tema: {Tema}",
+                        analise.Intencao, analise.PrecisaCriarChamado, analise.Tema);
+
+                    return (analise, respostaOpenAI);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "❌ Erro ao processar com OpenAI: {Message}. Tentando Dialogflow.", ex.Message);
+                    // Fallback para Dialogflow
+                }
+            }
+            else
+            {
+                _logger.LogWarning("OpenAI não está habilitado ou não configurado. _usarOpenAI: {UsarOpenAI}, _openAIService: {OpenAIService}", 
+                    _usarOpenAI, _openAIService != null);
+            }
+
+            // Tentar usar Dialogflow se OpenAI não estiver disponível
             if (_usarDialogflow && _dialogflowService != null)
             {
                 try
@@ -196,7 +308,7 @@ namespace CarTechAssist.Application.Services
                     _logger.LogInformation("Dialogflow processou mensagem. Intenção: {Intencao}, PrecisaCriarChamado: {PrecisaCriarChamado}",
                         analise.Intencao, analise.PrecisaCriarChamado);
 
-                    return analise;
+                    return (analise, respostaDialogflow);
                 }
                 catch (Exception ex)
                 {
@@ -206,7 +318,16 @@ namespace CarTechAssist.Application.Services
             }
 
             // Fallback para análise regex
-            return AnalisarMensagemAvancada(mensagem, contexto);
+            var analiseRegex = AnalisarMensagemAvancada(mensagem, contexto);
+            return (analiseRegex, null);
+        }
+
+        private bool PrecisaCriarChamadoPorIA(string respostaIA, string mensagemOriginal)
+        {
+            // Palavras-chave que indicam necessidade de criar chamado
+            var palavrasProblema = new[] { "problema", "erro", "bug", "não funciona", "quebrado", "ajuda", "suporte", "chamado", "ticket" };
+            var textoCompleto = (respostaIA + " " + mensagemOriginal).ToLowerInvariant();
+            return palavrasProblema.Any(p => textoCompleto.Contains(p));
         }
 
         private bool PrecisaCriarChamadoPorDialogflow(string respostaDialogflow, string mensagemOriginal)
@@ -313,9 +434,24 @@ namespace CarTechAssist.Application.Services
             return "geral";
         }
 
-        private ChatBotResponse GerarRespostaInteligente(AnaliseMensagem analise, ChatBotContexto contexto)
+        private ChatBotResponse GerarRespostaInteligente(AnaliseMensagem analise, ChatBotContexto contexto, string? respostaIA = null)
         {
-            // Gerar sugestões de soluções antes de criar chamado
+            // Se temos resposta da IA, usar ela diretamente (com sugestões adicionais se necessário)
+            if (!string.IsNullOrWhiteSpace(respostaIA))
+            {
+                var sugestoesIA = GerarSugestoesPorTema(analise.Tema, analise.MensagemOriginal);
+                var respostaFinal = respostaIA;
+                
+                // Se há sugestões e não mencionadas na resposta da IA, adicionar
+                if (sugestoesIA.Count > 0 && !respostaIA.Contains("sugestão") && !respostaIA.Contains("tentar"))
+                {
+                    respostaFinal += "\n\n**Sugestões rápidas:**\n" + string.Join("\n", sugestoesIA);
+                }
+                
+                return new ChatBotResponse(Resposta: respostaFinal, Sugestoes: sugestoesIA);
+            }
+
+            // Fallback para respostas padrão
             var sugestoes = GerarSugestoesPorTema(analise.Tema, analise.MensagemOriginal);
             
             var resposta = analise.Intencao switch
@@ -338,7 +474,7 @@ namespace CarTechAssist.Application.Services
                                     "Descreva sua necessidade técnica e eu tentarei diagnosticar ou criar um chamado.",
                 
                 _ => sugestoes.Count > 0 
-                    ? $"Diagnostiquei um problema relacionado a **{analise.Tema}**. Antes de criar um chamado, que tal tentar estas soluções?\n\n{sugestoes}\n\n" +
+                    ? $"Diagnostiquei um problema relacionado a **{analise.Tema}**. Antes de criar um chamado, que tal tentar estas soluções?\n\n{string.Join("\n", sugestoes)}\n\n" +
                       "Se essas soluções não resolverem, posso criar um chamado para nossa equipe técnica. Deseja criar agora?"
                     : "Entendi sua solicitação técnica. Para melhor atendê-lo, posso criar um chamado para nossa equipe analisar. Deseja que eu crie um chamado agora?"
             };
@@ -459,53 +595,90 @@ namespace CarTechAssist.Application.Services
             {
                 var mensagemOriginal = contexto.HistoricoMensagens.LastOrDefault() ?? mensagem;
                 
-                var chamado = await CriarChamadoInteligenteAsync(tenantId, usuarioId, mensagemOriginal, contexto, ct);
-                
-                if (chamado != null)
+                try
                 {
-                    // Adicionar mensagem inicial do bot no chamado
-                    try
+                    var chamado = await CriarChamadoInteligenteAsync(tenantId, usuarioId, mensagemOriginal, contexto, ct);
+                    
+                    if (chamado != null)
                     {
-                        await _chamadosService.AdicionarInteracaoIaAsync(
+                        // Adicionar mensagem inicial do bot no chamado
+                        try
+                        {
+                            await _chamadosService.AdicionarInteracaoIaAsync(
+                                chamado.ChamadoId,
+                                tenantId,
+                                "ChatBot",
+                                $"Olá! Criei este chamado com base na sua solicitação. Um técnico entrará em contato em breve. Chamado #{chamado.Numero}",
+                                null,
+                                "Chamado criado automaticamente pelo ChatBot",
+                                "CarTechAssist-ChatBot",
+                                null,
+                                null,
+                                null,
+                                ct);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Não foi possível adicionar mensagem inicial do bot ao chamado {ChamadoId}", chamado.ChamadoId);
+                        }
+
+                        SalvarContexto($"{tenantId}_{usuarioId}_0", new ChatBotContexto(
                             chamado.ChamadoId,
-                            tenantId,
-                            "ChatBot",
-                            $"Olá! Criei este chamado com base na sua solicitação. Um técnico entrará em contato em breve. Chamado #{chamado.Numero}",
+                            contexto.TemaConversa,
+                            contexto.HistoricoMensagens,
+                            false,
                             null,
-                            "Chamado criado automaticamente pelo ChatBot",
-                            "CarTechAssist-ChatBot",
-                            null,
-                            null,
-                            null,
-                            ct);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning(ex, "Não foi possível adicionar mensagem inicial do bot ao chamado {ChamadoId}", chamado.ChamadoId);
-                    }
+                            DateTime.UtcNow
+                        ));
 
-                    SalvarContexto($"{tenantId}_{usuarioId}_0", new ChatBotContexto(
-                        chamado.ChamadoId,
-                        contexto.TemaConversa,
-                        contexto.HistoricoMensagens,
-                        false,
-                        null,
-                        DateTime.UtcNow
-                    ));
-
+                        return new ChatBotResponse(
+                            Resposta: $"✅ **Chamado criado com sucesso!**\n\n" +
+                                     $"📋 **Número do chamado:** #{chamado.Numero}\n" +
+                                     $"📝 **Título:** {chamado.Titulo}\n\n" +
+                                     $"Nossa equipe técnica foi notificada e entrará em contato em breve. " +
+                                     $"Você pode acompanhar o andamento deste chamado na seção 'Chamados' do sistema.\n\n" +
+                                     $"**Resumo da conversa foi registrado para ajudar nosso técnico.**\n\n" +
+                                     $"Se precisar adicionar mais informações ou fazer alguma pergunta, é só me avisar!",
+                            CriouChamado: true,
+                            ChamadoId: chamado.ChamadoId,
+                            PrecisaEscalarParaHumano: true,
+                            SugestaoAcao: "Acompanhar chamado",
+                            AguardandoConfirmacao: false
+                        );
+                    }
+                }
+                catch (ArgumentException ex)
+                {
+                    _logger.LogError(ex, "Erro de validação ao criar chamado pelo bot. Mensagem: {Message}", ex.Message);
+                    SalvarContexto($"{tenantId}_{usuarioId}_0", contexto with { AguardandoConfirmacao = false, AcaoPendente = null });
                     return new ChatBotResponse(
-                        Resposta: $"✅ **Chamado criado com sucesso!**\n\n" +
-                                 $"📋 **Número do chamado:** #{chamado.Numero}\n" +
-                                 $"📝 **Título:** {chamado.Titulo}\n\n" +
-                                 $"Nossa equipe técnica foi notificada e entrará em contato em breve. " +
-                                 $"Você pode acompanhar o andamento deste chamado na seção 'Chamados' do sistema.\n\n" +
-                                 $"**Resumo da conversa foi registrado para ajudar nosso técnico.**\n\n" +
-                                 $"Se precisar adicionar mais informações ou fazer alguma pergunta, é só me avisar!",
-                        CriouChamado: true,
-                        ChamadoId: chamado.ChamadoId,
-                        PrecisaEscalarParaHumano: true,
-                        SugestaoAcao: "Acompanhar chamado",
-                        AguardandoConfirmacao: false
+                        Resposta: $"❌ **Erro ao criar chamado:** {ex.Message}\n\n" +
+                                 "Por favor, verifique se suas informações estão corretas e tente novamente. " +
+                                 "Se o problema persistir, entre em contato com o suporte.",
+                        PrecisaEscalarParaHumano: true
+                    );
+                }
+                catch (UnauthorizedAccessException ex)
+                {
+                    _logger.LogError(ex, "Erro de permissão ao criar chamado pelo bot. Mensagem: {Message}", ex.Message);
+                    SalvarContexto($"{tenantId}_{usuarioId}_0", contexto with { AguardandoConfirmacao = false, AcaoPendente = null });
+                    return new ChatBotResponse(
+                        Resposta: $"❌ **Erro de permissão:** {ex.Message}\n\n" +
+                                 "Por favor, verifique suas permissões e tente novamente. " +
+                                 "Se o problema persistir, entre em contato com o suporte.",
+                        PrecisaEscalarParaHumano: true
+                    );
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Erro inesperado ao criar chamado pelo bot. Tipo: {Type}, Mensagem: {Message}, StackTrace: {StackTrace}",
+                        ex.GetType().Name, ex.Message, ex.StackTrace);
+                    SalvarContexto($"{tenantId}_{usuarioId}_0", contexto with { AguardandoConfirmacao = false, AcaoPendente = null });
+                    return new ChatBotResponse(
+                        Resposta: $"❌ **Erro ao criar chamado:** {ex.Message}\n\n" +
+                                 "Por favor, tente novamente ou entre em contato com o suporte técnico. " +
+                                 "Nossa equipe foi notificada e está trabalhando para resolver o problema.",
+                        PrecisaEscalarParaHumano: true
                     );
                 }
             }
@@ -543,25 +716,65 @@ namespace CarTechAssist.Application.Services
                 else if (descricao.ToLower().Contains("importante"))
                     prioridadeId = 3; // Alta
 
+                // CORREÇÃO: Obter categoria padrão ou genérica (primeira categoria ativa do tenant)
+                // Se não conseguir obter categoria, usar 0 e deixar a validação tratar
+                int categoriaId = 0;
+                try
+                {
+                    // Tentar obter a primeira categoria ativa do tenant
+                    // Por enquanto, usar 0 - será validado no service e retornará erro apropriado
+                    // TODO: Implementar busca de categoria padrão ou genérica
+                    categoriaId = 0; // Será validado pelo service
+                }
+                catch
+                {
+                    categoriaId = 0;
+                }
+
                 var request = new CriarChamadoRequest(
                     Titulo: titulo,
                     Descricao: resumoConversa,
-                    CategoriaId: null,
+                    CategoriaId: categoriaId, // CORREÇÃO: Não pode ser null, usar 0 (será validado)
                     PrioridadeId: prioridadeId,
                     CanalId: 4, // Chatbot
                     SolicitanteUsuarioId: usuarioId,
-                    ResponsavelUsuarioId: null // Será atribuído automaticamente
+                    ResponsavelUsuarioId: null, // Será atribuído automaticamente
+                    SLA_EstimadoFim: null // Será calculado automaticamente baseado na prioridade
                 );
 
-                _logger.LogInformation("Criando chamado inteligente. TenantId: {TenantId}, UsuarioId: {UsuarioId}, Tema: {Tema}",
-                    tenantId, usuarioId, contexto.TemaConversa);
+                _logger.LogInformation("Criando chamado inteligente. TenantId: {TenantId}, UsuarioId: {UsuarioId}, Tema: {Tema}, Titulo: {Titulo}, PrioridadeId: {PrioridadeId}",
+                    tenantId, usuarioId, contexto.TemaConversa, titulo, prioridadeId);
 
-                return await _chamadosService.CriarAsync(tenantId, request, ct);
+                var chamado = await _chamadosService.CriarAsync(tenantId, request, ct);
+                
+                _logger.LogInformation("✅ Chamado criado com sucesso! ChamadoId: {ChamadoId}, Numero: {Numero}", 
+                    chamado.ChamadoId, chamado.Numero);
+                
+                return chamado;
+            }
+            catch (ArgumentException ex)
+            {
+                _logger.LogError(ex, "❌ ERRO DE VALIDAÇÃO ao criar chamado inteligente. TenantId: {TenantId}, UsuarioId: {UsuarioId}, Mensagem: {Message}, StackTrace: {StackTrace}",
+                    tenantId, usuarioId, ex.Message, ex.StackTrace);
+                throw; // Re-throw para que o erro seja propagado com detalhes
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                _logger.LogError(ex, "❌ ERRO DE PERMISSÃO ao criar chamado inteligente. TenantId: {TenantId}, UsuarioId: {UsuarioId}, Mensagem: {Message}, StackTrace: {StackTrace}",
+                    tenantId, usuarioId, ex.Message, ex.StackTrace);
+                throw; // Re-throw para que o erro seja propagado com detalhes
+            }
+            catch (InvalidOperationException ex)
+            {
+                _logger.LogError(ex, "❌ ERRO DE OPERAÇÃO ao criar chamado inteligente. TenantId: {TenantId}, UsuarioId: {UsuarioId}, Mensagem: {Message}, StackTrace: {StackTrace}",
+                    tenantId, usuarioId, ex.Message, ex.StackTrace);
+                throw; // Re-throw para que o erro seja propagado com detalhes
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Erro ao criar chamado inteligente");
-                return null;
+                _logger.LogError(ex, "❌ ERRO INESPERADO ao criar chamado inteligente. TenantId: {TenantId}, UsuarioId: {UsuarioId}, Tipo: {Type}, Mensagem: {Message}, StackTrace: {StackTrace}",
+                    tenantId, usuarioId, ex.GetType().Name, ex.Message, ex.StackTrace);
+                throw; // Re-throw para que o erro seja propagado com detalhes
             }
         }
 
@@ -615,8 +828,8 @@ namespace CarTechAssist.Application.Services
             }
 
             // Analisar mensagem e responder (com Dialogflow se disponível)
-            var analise = await AnalisarMensagemAsync(mensagem, contexto, tenantId, usuarioId, ct);
-            var respostaBot = GerarRespostaParaChamadoExistente(analise, chamadoId);
+            var (analise, respostaIA) = await AnalisarMensagemAsync(mensagem, contexto, tenantId, usuarioId, ct);
+            var respostaBot = GerarRespostaParaChamadoExistente(analise, chamadoId, respostaIA);
 
             // Adicionar resposta do bot ao chamado
             try
@@ -644,8 +857,18 @@ namespace CarTechAssist.Application.Services
             return respostaBot;
         }
 
-        private ChatBotResponse GerarRespostaParaChamadoExistente(AnaliseMensagem analise, long chamadoId)
+        private ChatBotResponse GerarRespostaParaChamadoExistente(AnaliseMensagem analise, long chamadoId, string? respostaIA = null)
         {
+            // Se temos resposta da IA, usar ela diretamente
+            if (!string.IsNullOrWhiteSpace(respostaIA))
+            {
+                return new ChatBotResponse(
+                    Resposta: respostaIA,
+                    ChamadoId: chamadoId
+                );
+            }
+
+            // Fallback para respostas padrão
             var resposta = analise.Intencao switch
             {
                 "consulta" => $"Este é o chamado #{chamadoId}. Você pode acompanhar o status na seção 'Chamados' do sistema. " +

@@ -20,7 +20,30 @@ namespace CarTechAssist.Api.Controllers
             _usuariosService = usuariosService;
         }
 
-        private int GetTenantId() => int.Parse(Request.Headers["X-Tenant-Id"].FirstOrDefault() ?? "1");
+      
+        private int GetTenantId()
+        {
+            var tenantIdHeader = Request.Headers["X-Tenant-Id"].FirstOrDefault();
+            if (string.IsNullOrEmpty(tenantIdHeader) || !int.TryParse(tenantIdHeader, out var tenantId) || tenantId <= 0)
+            {
+                throw new UnauthorizedAccessException("TenantId não encontrado ou inválido no header X-Tenant-Id.");
+            }
+
+            // Validar se corresponde ao JWT
+            if (User?.Identity?.IsAuthenticated == true)
+            {
+                var jwtTenantId = User.FindFirst("TenantId")?.Value;
+                if (!string.IsNullOrEmpty(jwtTenantId) && int.TryParse(jwtTenantId, out var jwtTenant))
+                {
+                    if (jwtTenant != tenantId)
+                    {
+                        throw new UnauthorizedAccessException("TenantId do header não corresponde ao token JWT.");
+                    }
+                }
+            }
+
+            return tenantId;
+        }
 
         [HttpGet]
         [AuthorizeRoles(1, 2, 3)] // Cliente(1), Agente(2), Admin(3) podem listar usuários
@@ -31,6 +54,15 @@ namespace CarTechAssist.Api.Controllers
             [FromQuery] int pageSize = 20,
             CancellationToken ct = default)
         {
+           
+            const int maxPageSize = 100;
+            if (pageSize > maxPageSize)
+                pageSize = maxPageSize;
+            if (pageSize < 1)
+                pageSize = 20;
+            if (page < 1)
+                page = 1;
+
             var result = await _usuariosService.ListarAsync(
                 GetTenantId(), tipo, ativo, page, pageSize, ct);
             return Ok(result);
@@ -39,7 +71,8 @@ namespace CarTechAssist.Api.Controllers
         [HttpGet("{id:int}")]
         public async Task<ActionResult<UsuarioDto>> Obter(int id, CancellationToken ct = default)
         {
-            var result = await _usuariosService.ObterAsync(id, ct);
+            // CORREÇÃO CRÍTICA: Passar tenantId para validação de multi-tenancy
+            var result = await _usuariosService.ObterAsync(GetTenantId(), id, ct);
             if (result == null) return NotFound();
             return Ok(result);
         }

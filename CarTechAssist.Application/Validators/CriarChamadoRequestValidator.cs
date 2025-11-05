@@ -12,8 +12,12 @@ namespace CarTechAssist.Application.Validators
                 .MaximumLength(200).WithMessage("Título deve ter no máximo 200 caracteres.");
 
             RuleFor(x => x.Descricao)
-                .MaximumLength(10000).WithMessage("Descrição deve ter no máximo 10000 caracteres.")
-                .When(x => !string.IsNullOrEmpty(x.Descricao));
+                .NotEmpty().WithMessage("Descrição é obrigatória.")
+                .MaximumLength(10000).WithMessage("Descrição deve ter no máximo 10000 caracteres.");
+
+            RuleFor(x => x.CategoriaId)
+                .NotNull().WithMessage("Categoria é obrigatória.")
+                .GreaterThan(0).WithMessage("CategoriaId deve ser maior que zero.");
 
             RuleFor(x => x.PrioridadeId)
                 .InclusiveBetween((byte)1, (byte)4).WithMessage("PrioridadeId deve estar entre 1 e 4.");

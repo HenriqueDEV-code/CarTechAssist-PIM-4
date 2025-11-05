@@ -44,32 +44,38 @@
                 <h5 class="mb-0">Informações do Chamado</h5>
             </div>
             <div class="card-body">
-                <form method="post">
+                <form method="post" id="formCriarChamado" novalidate>
                     <div class="mb-3">
                         <label asp-for="ChamadoRequest.Titulo" class="form-label">Título <span class="text-danger">*</span></label>
-                        <input asp-for="ChamadoRequest.Titulo" class="form-control" required maxlength="200" />
+                        <input asp-for="ChamadoRequest.Titulo" class="form-control" required maxlength="200" placeholder="Digite o título do chamado..." />
                         <span asp-validation-for="ChamadoRequest.Titulo" class="text-danger"></span>
                     </div>
 
                     <div class="mb-3">
-                        <label asp-for="ChamadoRequest.Descricao" class="form-label">Descrição</label>
-                        <textarea asp-for="ChamadoRequest.Descricao" class="form-control" rows="5" maxlength="2000"></textarea>
+                        <label asp-for="ChamadoRequest.Descricao" class="form-label">Descrição <span class="text-danger">*</span></label>
+                        <textarea asp-for="ChamadoRequest.Descricao" class="form-control" rows="5" required maxlength="10000" placeholder="Descreva o problema ou solicitação em detalhes..."></textarea>
                         <span asp-validation-for="ChamadoRequest.Descricao" class="text-danger"></span>
+                        <small class="form-text text-muted">Máximo de 10.000 caracteres</small>
                     </div>
 
                     <div class="row">
                         <div class="col-md-6 mb-3">
-                            <label asp-for="ChamadoRequest.CategoriaId" class="form-label">Categoria</label>
-                            <select asp-for="ChamadoRequest.CategoriaId" class="form-select">
-                                <option value="">Selecione uma categoria</option>
-                                @if (Model.Categorias != null)
+                            <label asp-for="ChamadoRequest.CategoriaId" class="form-label">Categoria <span class="text-danger">*</span></label>
+                            <select asp-for="ChamadoRequest.CategoriaId" class="form-select" required>
+                                <option value="0" disabled selected>Selecione uma categoria</option>
+                                @if (Model.Categorias != null && Model.Categorias.Any())
                                 {
                                     @foreach (var categoria in Model.Categorias)
                                     {
                                         <option value="@categoria.CategoriaId">@categoria.Nome</option>
                                     }
                                 }
+                                else
+                                {
+                                    <option value="0" disabled>Nenhuma categoria disponível</option>
+                                }
                             </select>
+                            <span asp-validation-for="ChamadoRequest.CategoriaId" class="text-danger"></span>
                         </div>
 
                         <div class="col-md-6 mb-3">
@@ -83,18 +89,75 @@
                         </div>
                     </div>
 
-                    <div class="mb-3">
-                        <label asp-for="ChamadoRequest.CanalId" class="form-label">Canal <span class="text-danger">*</span></label>
-                        <select asp-for="ChamadoRequest.CanalId" class="form-select" required>
-                            <option value="1" selected>Web</option>
-                            <option value="2">Desktop</option>
-                            <option value="3">Mobile</option>
-                            <option value="4">Chatbot</option>
-                        </select>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label asp-for="ChamadoRequest.CanalId" class="form-label">Canal <span class="text-danger">*</span></label>
+                            <select asp-for="ChamadoRequest.CanalId" class="form-select" required>
+                                <option value="1" selected>Web</option>
+                                <option value="2">Desktop</option>
+                                <option value="3">Mobile</option>
+                                <option value="4">Chatbot</option>
+                            </select>
+                        </div>
+
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">SLA Estimado</label>
+                            <input type="text" class="form-control" id="slaEstimado" readonly style="background-color: #e9ecef;">
+                            <small class="form-text text-muted">Calculado automaticamente baseado na prioridade</small>
+                        </div>
                     </div>
 
-                    <input type="hidden" asp-for="ChamadoRequest.SolicitanteUsuarioId" />
-                    <input type="hidden" asp-for="ChamadoRequest.ResponsavelUsuarioId" />
+                    @* Campos para Técnico/Admin: Seleção de Solicitante e Responsável *@
+                    @if (Model.TipoUsuarioId == 2 || Model.TipoUsuarioId == 3)
+                    {
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label asp-for="ChamadoRequest.SolicitanteUsuarioId" class="form-label">Solicitante <span class="text-danger">*</span></label>
+                                <select asp-for="ChamadoRequest.SolicitanteUsuarioId" class="form-select" required>
+                                    <option value="0" disabled selected>Selecione o solicitante</option>
+                                    @if (Model.Usuarios != null && Model.Usuarios.Any())
+                                    {
+                                        @foreach (var usuario in Model.Usuarios)
+                                        {
+                                            <option value="@usuario.UsuarioId">@usuario.UsuarioId - @usuario.NomeCompleto (@usuario.Login)</option>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <option value="0" disabled>Nenhum usuário disponível</option>
+                                    }
+                                </select>
+                                <span asp-validation-for="ChamadoRequest.SolicitanteUsuarioId" class="text-danger"></span>
+                                <small class="form-text text-muted">Selecione o usuário que está solicitando o chamado</small>
+                            </div>
+
+                            <div class="col-md-6 mb-3">
+                                <label asp-for="ChamadoRequest.ResponsavelUsuarioId" class="form-label">Responsável</label>
+                                <select asp-for="ChamadoRequest.ResponsavelUsuarioId" class="form-select">
+                                    <option value="">Selecione o responsável (opcional)</option>
+                                    @if (Model.Tecnicos != null && Model.Tecnicos.Any())
+                                    {
+                                        @foreach (var tecnico in Model.Tecnicos)
+                                        {
+                                            <option value="@tecnico.UsuarioId">@tecnico.UsuarioId - @tecnico.NomeCompleto (@tecnico.Login)</option>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <option value="" disabled>Nenhum técnico disponível</option>
+                                    }
+                                </select>
+                                <span asp-validation-for="ChamadoRequest.ResponsavelUsuarioId" class="text-danger"></span>
+                                <small class="form-text text-muted">Selecione o técnico responsável (padrão: você mesmo)</small>
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        @* Cliente: campos hidden *@
+                        <input type="hidden" asp-for="ChamadoRequest.SolicitanteUsuarioId" />
+                        <input type="hidden" asp-for="ChamadoRequest.ResponsavelUsuarioId" />
+                    }
 
                     <div class="d-flex justify-content-between">
                         <a href="/Chamados" class="btn btn-secondary">Cancelar</a>
@@ -110,5 +173,105 @@
 
 @section Scripts {
     @{await Html.RenderPartialAsync("_ValidationScriptsPartial");}
+    <script>
+        // CORREÇÃO: Validação client-side adicional para garantir campos obrigatórios
+        document.addEventListener('DOMContentLoaded', function() {
+            const form = document.getElementById('formCriarChamado');
+            const categoriaSelect = document.querySelector('select[name="ChamadoRequest.CategoriaId"]');
+            const prioridadeSelect = document.querySelector('select[name="ChamadoRequest.PrioridadeId"]');
+            const slaEstimadoInput = document.getElementById('slaEstimado');
+            
+            // Função para calcular SLA baseado na prioridade
+            function calcularSLA(prioridadeId) {
+                const agora = new Date();
+                let horas = 48; // Padrão: Média
+                
+                switch(parseInt(prioridadeId)) {
+                    case 1: horas = 72; break; // Baixa: 72 horas (3 dias)
+                    case 2: horas = 48; break; // Média: 48 horas (2 dias)
+                    case 3: horas = 24; break; // Alta: 24 horas (1 dia)
+                    case 4: horas = 4; break;  // Urgente: 4 horas
+                }
+                
+                const dataEstimada = new Date(agora.getTime() + (horas * 60 * 60 * 1000));
+                
+                // Formatar para exibição: YYYY-MM-DD HH:mm:ss.mmm
+                const ano = dataEstimada.getUTCFullYear();
+                const mes = String(dataEstimada.getUTCMonth() + 1).padStart(2, '0');
+                const dia = String(dataEstimada.getUTCDate()).padStart(2, '0');
+                const hora = String(dataEstimada.getUTCHours()).padStart(2, '0');
+                const minuto = String(dataEstimada.getUTCMinutes()).padStart(2, '0');
+                const segundo = String(dataEstimada.getUTCSeconds()).padStart(2, '0');
+                const milissegundo = String(dataEstimada.getUTCMilliseconds()).padStart(3, '0');
+                
+                return `${ano}-${mes}-${dia} ${hora}:${minuto}:${segundo}.${milissegundo}`;
+            }
+            
+            // Atualizar SLA quando prioridade mudar
+            if (prioridadeSelect && slaEstimadoInput) {
+                function atualizarSLA() {
+                    slaEstimadoInput.value = calcularSLA(prioridadeSelect.value);
+                }
+                
+                atualizarSLA(); // Calcular inicial
+                prioridadeSelect.addEventListener('change', atualizarSLA);
+            }
+            
+            if (form) {
+                form.addEventListener('submit', function(e) {
+                    // Validar categoria
+                    if (categoriaSelect && (categoriaSelect.value === '' || categoriaSelect.value === '0')) {
+                        e.preventDefault();
+                        categoriaSelect.classList.add('is-invalid');
+                        const errorSpan = categoriaSelect.nextElementSibling;
+                        if (errorSpan && errorSpan.classList.contains('text-danger')) {
+                            errorSpan.textContent = 'Categoria é obrigatória. Selecione uma categoria.';
+                        } else {
+                            const newError = document.createElement('span');
+                            newError.className = 'text-danger';
+                            newError.textContent = 'Categoria é obrigatória. Selecione uma categoria.';
+                            categoriaSelect.parentElement.appendChild(newError);
+                        }
+                        categoriaSelect.focus();
+                        return false;
+                    }
+                    
+                    // Validar descrição
+                    const descricao = document.querySelector('textarea[name="ChamadoRequest.Descricao"]');
+                    if (descricao && !descricao.value.trim()) {
+                        e.preventDefault();
+                        descricao.classList.add('is-invalid');
+                        descricao.focus();
+                        return false;
+                    }
+                    
+                    // Validar solicitante se for técnico/admin
+                    const solicitanteSelect = document.querySelector('select[name="ChamadoRequest.SolicitanteUsuarioId"]');
+                    if (solicitanteSelect && solicitanteSelect.offsetParent !== null) {
+                        // Campo está visível (técnico/admin)
+                        if (solicitanteSelect.value === '' || solicitanteSelect.value === '0') {
+                            e.preventDefault();
+                            solicitanteSelect.classList.add('is-invalid');
+                            solicitanteSelect.focus();
+                            return false;
+                        }
+                    }
+                });
+                
+                // Remover classe de erro quando usuário selecionar categoria
+                if (categoriaSelect) {
+                    categoriaSelect.addEventListener('change', function() {
+                        if (this.value && this.value !== '0') {
+                            this.classList.remove('is-invalid');
+                            const errorSpan = this.nextElementSibling;
+                            if (errorSpan && errorSpan.classList.contains('text-danger')) {
+                                errorSpan.textContent = '';
+                            }
+                        }
+                    });
+                }
+            }
+        });
+    </script>
 }
 

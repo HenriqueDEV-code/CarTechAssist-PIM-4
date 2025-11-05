@@ -41,10 +41,15 @@ namespace CarTechAssist.Application.Services
             return new PagedResult<UsuarioDto>(dtos, total, page, pageSize);
         }
 
-        public async Task<UsuarioDto?> ObterAsync(int usuarioId, CancellationToken ct)
+        
+        public async Task<UsuarioDto?> ObterAsync(int tenantId, int usuarioId, CancellationToken ct)
         {
             var usuario = await _usuariosRepository.ObterPorIdAsync(usuarioId, ct);
             if (usuario == null) return null;
+
+            // CORREÇÃO CRÍTICA: Validar se usuário pertence ao tenant
+            if (usuario.TenantId != tenantId)
+                throw new UnauthorizedAccessException("Usuário não pertence ao tenant atual.");
 
             return new UsuarioDto(
                 usuario.UsuarioId,

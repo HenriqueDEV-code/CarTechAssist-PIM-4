@@ -14,7 +14,10 @@ namespace CarTechAssist.Contracts.Tickets
         int SolicitanteUsuarioId,
         int? ResponsavelUsuarioId,
         DateTime DataCriacao,
-        DateTime? DataAtualizacao
+        DateTime? DataAtualizacao,
+        string StatusNome, // CORREÇÃO: Nome legível do status
+        string PrioridadeNome, // CORREÇÃO: Nome legível da prioridade
+        string CanalNome // CORREÇÃO: Nome legível do canal
     );
 }
 

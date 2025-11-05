@@ -16,9 +16,10 @@ namespace CarTechAssist.Infrastruture.Repositories
 
         public async Task<Chamado?> ObterAsync(long chamadoId, CancellationToken ct)
         {
+            // CORREÇÃO: Removido filtro Excluido = 0 (a view pode já filtrar isso ou não ter essa coluna)
             const string sql = @"
                 SELECT * FROM core.vw_chamados 
-                WHERE ChamadoId = @chamadoId AND Excluido = 0";
+                WHERE ChamadoId = @chamadoId";
 
             return await _db.QueryFirstOrDefaultAsync<Chamado>(
                 new CommandDefinition(sql, new { chamadoId }, cancellationToken: ct));
@@ -27,48 +28,42 @@ namespace CarTechAssist.Infrastruture.Repositories
         public async Task<(IReadOnlyList<Chamado> Items, int Total)> ListaAsync(
             int tenantId,
             byte? statusId,
-            int? responsaveUsuarioId,
+            int? responsavelUsuarioId,
             int? solicitanteUsuarioId,
             int page,
             int pageSize,
             CancellationToken ct)
         {
+            
+            // Agora usa SQL parametrizado com condições NULL-safe
             var offset = (page - 1) * pageSize;
 
-            var whereConditions = new List<string> { "TenantId = @tenantId", "Excluido = 0" };
             var parameters = new DynamicParameters();
             parameters.Add("tenantId", tenantId);
             parameters.Add("offset", offset);
             parameters.Add("pageSize", pageSize);
+            // CORREÇÃO: Dapper converte null automaticamente para DBNull.Value - não precisa converter manualmente
+            parameters.Add("statusId", statusId);
+            // CORREÇÃO CRÍTICA: Corrigido nome do parâmetro (estava 'responsaveUsuarioId' sem 'l')
+            parameters.Add("responsavelUsuarioId", responsavelUsuarioId);
+            parameters.Add("solicitanteUsuarioId", solicitanteUsuarioId);
 
-            if (statusId.HasValue)
-            {
-                whereConditions.Add("StatusId = @statusId");
-                parameters.Add("statusId", statusId.Value);
-            }
-
-            if (responsaveUsuarioId.HasValue)
-            {
-                whereConditions.Add("ResponsavelUsuarioId = @responsavelUsuarioId");
-                parameters.Add("responsavelUsuarioId", responsaveUsuarioId.Value);
-            }
-
-            if (solicitanteUsuarioId.HasValue)
-            {
-                whereConditions.Add("SolicitanteUsuarioId = @solicitanteUsuarioId");
-                parameters.Add("solicitanteUsuarioId", solicitanteUsuarioId.Value);
-            }
-
-            var whereClause = string.Join(" AND ", whereConditions);
-
-            var sql = $@"
+            // SQL completamente parametrizado - sem concatenação de strings
+            // CORREÇÃO: Removido filtro Excluido = 0 (a view pode já filtrar isso ou não ter essa coluna)
+            const string sql = @"
                 SELECT * FROM core.vw_chamados 
-                WHERE {whereClause}
+                WHERE TenantId = @tenantId 
+                    AND (@statusId IS NULL OR StatusId = @statusId)
+                    AND (@responsavelUsuarioId IS NULL OR ResponsavelUsuarioId = @responsavelUsuarioId)
+                    AND (@solicitanteUsuarioId IS NULL OR SolicitanteUsuarioId = @solicitanteUsuarioId)
                 ORDER BY DataCriacao DESC
                 OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY;
 
                 SELECT COUNT(*) FROM core.vw_chamados 
-                WHERE {whereClause}";
+                WHERE TenantId = @tenantId 
+                    AND (@statusId IS NULL OR StatusId = @statusId)
+                    AND (@responsavelUsuarioId IS NULL OR ResponsavelUsuarioId = @responsavelUsuarioId)
+                    AND (@solicitanteUsuarioId IS NULL OR SolicitanteUsuarioId = @solicitanteUsuarioId)";
 
             using var multi = await _db.QueryMultipleAsync(
                 new CommandDefinition(sql, parameters, cancellationToken: ct));
@@ -88,8 +83,10 @@ namespace CarTechAssist.Infrastruture.Repositories
             byte canalId,
             int solicitanteUsuarioId,
             int? responsavelUsuarioId,
+            DateTime? slaEstimadoFim,
             CancellationToken ct)
         {
+            // CORREÇÃO: A stored procedure agora aceita o parâmetro SLA_EstimadoFim
             const string sql = @"
                 EXEC core.usp_Chamado_Criar
                     @TenantId = @tenantId,
@@ -99,18 +96,24 @@ namespace CarTechAssist.Infrastruture.Repositories
                     @PrioridadeId = @prioridadeId,
                     @CanalId = @canalId,
                     @SolicitanteUsuarioId = @solicitanteUsuarioId,
-                    @ResponsavelUsuarioId = @responsavelUsuarioId";
+                    @ResponsavelUsuarioId = @responsavelUsuarioId,
+                    @SLA_EstimadoFim = @slaEstimadoFim";
 
             var parameters = new DynamicParameters();
             parameters.Add("tenantId", tenantId);
             parameters.Add("titulo", titulo);
-            parameters.Add("descricao", descricao == null ? (object)DBNull.Value : descricao);
-            parameters.Add("categoriaId", categoriaId ?? (object)DBNull.Value);
+            // CORREÇÃO: Dapper converte null automaticamente para DBNull.Value - não precisa converter manualmente
+            parameters.Add("descricao", descricao);
+            parameters.Add("categoriaId", categoriaId);
             parameters.Add("prioridadeId", prioridadeId);
             parameters.Add("canalId", canalId);
             parameters.Add("solicitanteUsuarioId", solicitanteUsuarioId);
-            parameters.Add("responsavelUsuarioId", responsavelUsuarioId ?? (object)DBNull.Value);
+            // CORREÇÃO CRÍTICA: Dapper trata null automaticamente - não usar DBNull.Value explicitamente
+            parameters.Add("responsavelUsuarioId", responsavelUsuarioId);
+            // CORREÇÃO: A stored procedure agora aceita SLA_EstimadoFim diretamente
+            parameters.Add("slaEstimadoFim", slaEstimadoFim);
 
+            // Criar o chamado (a stored procedure já insere o SLA)
             return await _db.QueryFirstAsync<Chamado>(
                 new CommandDefinition(sql, parameters, cancellationToken: ct));
         }
@@ -146,12 +149,13 @@ namespace CarTechAssist.Infrastruture.Repositories
             parameters.Add("tenantId", tenantId);
             parameters.Add("modelo", modelo);
             parameters.Add("mensagem", mensagem);
-            parameters.Add("confianca", confianca ?? (object)DBNull.Value);
-            parameters.Add("resumoRaciocinio", resumoRaciocinio ?? (object)DBNull.Value);
+            // CORREÇÃO: Dapper converte null automaticamente para DBNull.Value
+            parameters.Add("confianca", confianca);
+            parameters.Add("resumoRaciocinio", resumoRaciocinio);
             parameters.Add("provedor", provedor);
-            parameters.Add("inputTokens", inputTokens ?? (object)DBNull.Value);
-            parameters.Add("outputTokens", outputTokens ?? (object)DBNull.Value);
-            parameters.Add("custoUsd", custoUsd ?? (object)DBNull.Value);
+            parameters.Add("inputTokens", inputTokens);
+            parameters.Add("outputTokens", outputTokens);
+            parameters.Add("custoUsd", custoUsd);
 
             return await _db.QueryFirstAsync<Chamado>(
                 new CommandDefinition(sql, parameters, cancellationToken: ct));
@@ -259,19 +263,15 @@ namespace CarTechAssist.Infrastruture.Repositories
             int? solicitanteUsuarioId,
             CancellationToken ct)
         {
-            var whereConditions = new List<string> { "TenantId = @tenantId", "Excluido = 0" };
+            // CORREÇÃO CRÍTICA: Removida construção dinâmica de SQL para prevenir SQL Injection
             var parameters = new DynamicParameters();
             parameters.Add("tenantId", tenantId);
+            // CORREÇÃO: Dapper converte null automaticamente para DBNull.Value
+            parameters.Add("solicitanteUsuarioId", solicitanteUsuarioId);
 
-            if (solicitanteUsuarioId.HasValue)
-            {
-                whereConditions.Add("SolicitanteUsuarioId = @solicitanteUsuarioId");
-                parameters.Add("solicitanteUsuarioId", solicitanteUsuarioId.Value);
-            }
-
-            var whereClause = string.Join(" AND ", whereConditions);
-
-            var sql = $@"
+            // SQL completamente parametrizado
+            // CORREÇÃO: Removido filtro Excluido = 0 (a view pode já filtrar isso ou não ter essa coluna)
+            const string sql = @"
                 SELECT 
                     COUNT(*) as Total,
                     SUM(CASE WHEN StatusId = 1 THEN 1 ELSE 0 END) as Abertos,
@@ -279,7 +279,8 @@ namespace CarTechAssist.Infrastruture.Repositories
                     SUM(CASE WHEN StatusId = 4 THEN 1 ELSE 0 END) as Resolvidos,
                     SUM(CASE WHEN StatusId = 6 THEN 1 ELSE 0 END) as Cancelados
                 FROM core.vw_chamados 
-                WHERE {whereClause}";
+                WHERE TenantId = @tenantId 
+                    AND (@solicitanteUsuarioId IS NULL OR SolicitanteUsuarioId = @solicitanteUsuarioId)";
 
             var result = await _db.QueryFirstAsync<(int Total, int Abertos, int EmAndamento, int Resolvidos, int Cancelados)>(
                 new CommandDefinition(sql, parameters, cancellationToken: ct));

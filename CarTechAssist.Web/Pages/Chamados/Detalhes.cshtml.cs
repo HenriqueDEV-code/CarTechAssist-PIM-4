@@ -63,9 +63,13 @@ namespace CarTechAssist.Web.Pages.Chamados
 
             try
             {
+                _logger.LogInformation("Carregando detalhes do chamado {ChamadoId}. TenantId: {TenantId}, UsuarioId: {UsuarioId}, TipoUsuarioId: {TipoUsuarioId}",
+                    id, TenantId, UsuarioId, tipoUsuarioId);
+
                 Chamado = await _chamadosService.ObterAsync(id, ct);
                 if (Chamado == null)
                 {
+                    _logger.LogWarning("Chamado {ChamadoId} não encontrado", id);
                     ErrorMessage = "Chamado não encontrado.";
                     return RedirectToPage("/Chamados");
                 }
@@ -73,6 +77,7 @@ namespace CarTechAssist.Web.Pages.Chamados
                 // Verificar se o usuário tem permissão para ver este chamado
                 if (tipoUsuarioId == 1 && Chamado.SolicitanteUsuarioId != usuarioId)
                 {
+                    _logger.LogWarning("Usuário {UsuarioId} tentou acessar chamado {ChamadoId} sem permissão", usuarioId, id);
                     ErrorMessage = "Você não tem permissão para ver este chamado.";
                     return RedirectToPage("/Chamados");
                 }
@@ -82,10 +87,50 @@ namespace CarTechAssist.Web.Pages.Chamados
                 
                 // Carregar anexos
                 Anexos = await _chamadosService.ListarAnexosAsync(id, ct);
+
+                _logger.LogInformation("Detalhes do chamado {ChamadoId} carregados com sucesso. Interações: {InteracoesCount}, Anexos: {AnexosCount}",
+                    id, Interacoes?.Count ?? 0, Anexos?.Count ?? 0);
+            }
+            catch (System.Net.Http.HttpRequestException httpEx)
+            {
+                _logger.LogError(httpEx, "Erro HTTP ao carregar detalhes do chamado {ChamadoId}. StatusCode: {StatusCode}, Message: {Message}",
+                    id,
+                    httpEx.Data.Contains("StatusCode") ? httpEx.Data["StatusCode"] : "Desconhecido",
+                    httpEx.Data.Contains("Message") ? httpEx.Data["Message"] : httpEx.Message);
+                
+                // Verificar se é erro de autenticação
+                if (httpEx.Data.Contains("StatusCode") && httpEx.Data["StatusCode"] is System.Net.HttpStatusCode statusCode)
+                {
+                    if (statusCode == System.Net.HttpStatusCode.Unauthorized)
+                    {
+                        ErrorMessage = "Sua sessão expirou. Por favor, faça login novamente.";
+                        return RedirectToPage("/Login");
+                    }
+                    else if (statusCode == System.Net.HttpStatusCode.NotFound)
+                    {
+                        ErrorMessage = "Chamado não encontrado.";
+                        return RedirectToPage("/Chamados");
+                    }
+                    else if (statusCode == System.Net.HttpStatusCode.Forbidden)
+                    {
+                        ErrorMessage = "Você não tem permissão para ver este chamado.";
+                        return RedirectToPage("/Chamados");
+                    }
+                    else
+                    {
+                        var apiMessage = httpEx.Data.Contains("Message") ? httpEx.Data["Message"]?.ToString() : null;
+                        ErrorMessage = !string.IsNullOrEmpty(apiMessage) ? apiMessage : $"Erro ao carregar chamado: {httpEx.Message}";
+                    }
+                }
+                else
+                {
+                    ErrorMessage = $"Erro ao carregar chamado: {httpEx.Message}";
+                }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Erro ao carregar detalhes do chamado {ChamadoId}", id);
+                _logger.LogError(ex, "Erro inesperado ao carregar detalhes do chamado {ChamadoId}. Tipo: {Type}, Mensagem: {Message}, StackTrace: {StackTrace}",
+                    id, ex.GetType().Name, ex.Message, ex.StackTrace);
                 ErrorMessage = "Erro ao carregar chamado.";
             }
 

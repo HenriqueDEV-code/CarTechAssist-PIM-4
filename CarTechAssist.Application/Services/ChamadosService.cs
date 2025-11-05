@@ -6,6 +6,7 @@ using CarTechAssist.Domain.Entities;
 using CarTechAssist.Domain.Enums;
 using CarTechAssist.Domain.Interfaces;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 
 namespace CarTechAssist.Application.Services
 {
@@ -14,18 +15,27 @@ namespace CarTechAssist.Application.Services
         private readonly IChamadosRepository _chamadosRepository;
         private readonly IAnexosReposity _anexosRepository;
         private readonly IFeedbackRepository _feedbackRepository;
+        private readonly IUsuariosRepository _usuariosRepository;
         private readonly IConfiguration _configuration;
+        private readonly ILogger<ChamadosService> _logger;
+        private readonly InputSanitizer? _inputSanitizer;
 
         public ChamadosService(
             IChamadosRepository chamadosRepository,
             IAnexosReposity anexosRepository,
             IFeedbackRepository feedbackRepository,
-            IConfiguration configuration)
+            IUsuariosRepository usuariosRepository,
+            IConfiguration configuration,
+            ILogger<ChamadosService> logger,
+            InputSanitizer? inputSanitizer = null)
         {
             _chamadosRepository = chamadosRepository;
             _anexosRepository = anexosRepository;
             _feedbackRepository = feedbackRepository;
+            _usuariosRepository = usuariosRepository;
             _configuration = configuration;
+            _logger = logger;
+            _inputSanitizer = inputSanitizer;
         }
 
         public async Task<PagedResult<TicketView>> ListarAsync(
@@ -40,14 +50,22 @@ namespace CarTechAssist.Application.Services
             var (items, total) = await _chamadosRepository.ListaAsync(
                 tenantId, statusId, responsavelUsuarioId, solicitanteUsuarioId, page, pageSize, ct);
 
+            // CORREÇÃO: Incluir nomes legíveis dos enums e informações adicionais
             var ticketViews = items.Select(c => new TicketView(
                 c.ChamadoId,
                 c.Numero,
                 c.Titulo,
-                c.StatusId.ToString(),
-                c.PrioridadeId.ToString(),
+                EnumHelperService.GetStatusNome(c.StatusId), // CORREÇÃO: Nome legível do status
+                EnumHelperService.GetPrioridadeNome(c.PrioridadeId), // CORREÇÃO: Nome legível da prioridade
                 c.IA_FeedbackScore.HasValue ? (IAFeedbackScoreDto)(byte)c.IA_FeedbackScore.Value : null,
-                c.DataCriacao
+                c.DataCriacao,
+                EnumHelperService.GetCanalNome(c.CanalId), // CORREÇÃO: Nome legível do canal
+                c.CategoriaId, // CORREÇÃO: Incluir CategoriaId
+                !string.IsNullOrEmpty(c.Descricao) && c.Descricao.Length > 100 
+                    ? c.Descricao.Substring(0, 100) + "..." 
+                    : c.Descricao, // CORREÇÃO: Descrição resumida para listagem
+                c.SolicitanteUsuarioId, // CORREÇÃO: Incluir ID do solicitante
+                c.ResponsavelUsuarioId // CORREÇÃO: Incluir ID do responsável
             )).ToList();
 
             return new PagedResult<TicketView>(ticketViews, total, page, pageSize);
@@ -74,6 +92,7 @@ namespace CarTechAssist.Application.Services
                     throw new UnauthorizedAccessException("Você não tem permissão para visualizar este chamado.");
             }
 
+            // CORREÇÃO: Incluir nomes legíveis
             return new ChamadoDetailDto(
                 chamado.ChamadoId,
                 chamado.Numero,
@@ -86,7 +105,10 @@ namespace CarTechAssist.Application.Services
                 chamado.SolicitanteUsuarioId,
                 chamado.ResponsavelUsuarioId,
                 chamado.DataCriacao,
-                chamado.DataAtualizacao
+                chamado.DataAtualizacao,
+                EnumHelperService.GetStatusNome(chamado.StatusId),
+                EnumHelperService.GetPrioridadeNome(chamado.PrioridadeId),
+                EnumHelperService.GetCanalNome(chamado.CanalId)
             );
         }
 
@@ -95,31 +117,128 @@ namespace CarTechAssist.Application.Services
             CriarChamadoRequest request,
             CancellationToken ct)
         {
-            var chamado = await _chamadosRepository.CriarAsync(
-                tenantId,
-                request.Titulo,
-                request.Descricao,
-                request.CategoriaId,
-                request.PrioridadeId,
-                request.CanalId,
-                request.SolicitanteUsuarioId,
-                request.ResponsavelUsuarioId,
-                ct);
+            // Log detalhado para debug
+            _logger.LogInformation("Iniciando criação de chamado. TenantId: {TenantId}, SolicitanteUsuarioId: {SolicitanteUsuarioId}, ResponsavelUsuarioId: {ResponsavelUsuarioId}",
+                tenantId, request.SolicitanteUsuarioId, request.ResponsavelUsuarioId?.ToString() ?? "null");
 
-            return new ChamadoDetailDto(
-                chamado.ChamadoId,
-                chamado.Numero,
-                chamado.Titulo,
-                chamado.Descricao,
-                chamado.CategoriaId,
-                (byte)chamado.StatusId,
-                (byte)chamado.PrioridadeId,
-                (byte)chamado.CanalId,
-                chamado.SolicitanteUsuarioId,
-                chamado.ResponsavelUsuarioId,
-                chamado.DataCriacao,
-                chamado.DataAtualizacao
-            );
+            // Validar solicitante existe e pertence ao tenant
+            var solicitante = await _usuariosRepository.ObterPorIdAsync(request.SolicitanteUsuarioId, ct);
+            if (solicitante == null)
+            {
+                _logger.LogError("Usuário solicitante {UsuarioId} não encontrado no banco de dados", request.SolicitanteUsuarioId);
+                throw new ArgumentException($"Usuário solicitante {request.SolicitanteUsuarioId} não encontrado.");
+            }
+            
+            _logger.LogInformation("Usuário solicitante encontrado. UsuarioId: {UsuarioId}, TenantId: {TenantIdBanco}, Ativo: {Ativo}, Excluido: {Excluido}",
+                solicitante.UsuarioId, solicitante.TenantId, solicitante.Ativo, solicitante.Excluido);
+            
+            if (solicitante.TenantId != tenantId)
+            {
+                _logger.LogError("TenantId não corresponde. Esperado: {TenantIdEsperado}, Encontrado: {TenantIdBanco}",
+                    tenantId, solicitante.TenantId);
+                throw new UnauthorizedAccessException($"Usuário solicitante não pertence ao tenant {tenantId}.");
+            }
+            if (!solicitante.Ativo || solicitante.Excluido)
+            {
+                _logger.LogError("Usuário solicitante está inativo ou excluído. Ativo: {Ativo}, Excluido: {Excluido}",
+                    solicitante.Ativo, solicitante.Excluido);
+                throw new ArgumentException($"Usuário solicitante {request.SolicitanteUsuarioId} está inativo ou excluído.");
+            }
+
+            // Validar responsável se fornecido
+            if (request.ResponsavelUsuarioId.HasValue)
+            {
+                var responsavel = await _usuariosRepository.ObterPorIdAsync(request.ResponsavelUsuarioId.Value, ct);
+                if (responsavel == null)
+                {
+                    throw new ArgumentException($"Usuário responsável {request.ResponsavelUsuarioId.Value} não encontrado.");
+                }
+                if (responsavel.TenantId != tenantId)
+                {
+                    throw new UnauthorizedAccessException($"Usuário responsável não pertence ao tenant {tenantId}.");
+                }
+                if (!responsavel.Ativo || responsavel.Excluido)
+                {
+                    throw new ArgumentException($"Usuário responsável {request.ResponsavelUsuarioId.Value} está inativo ou excluído.");
+                }
+                // Responsável deve ser técnico ou admin
+                if (responsavel.TipoUsuarioId != Domain.Enums.TipoUsuarios.Tecnico && 
+                    responsavel.TipoUsuarioId != Domain.Enums.TipoUsuarios.Administrador)
+                {
+                    throw new ArgumentException($"Usuário responsável deve ser Técnico ou Administrador.");
+                }
+            }
+
+            try
+            {
+                _logger.LogInformation("Chamando repository para criar chamado. TenantId: {TenantId}, SolicitanteUsuarioId: {SolicitanteUsuarioId}",
+                    tenantId, request.SolicitanteUsuarioId);
+                
+                // CORREÇÃO CRÍTICA: Sanitizar entrada para prevenir XSS
+                var tituloSanitizado = _inputSanitizer?.Sanitize(request.Titulo) ?? request.Titulo;
+                var descricaoSanitizada = _inputSanitizer?.Sanitize(request.Descricao) ?? request.Descricao; // Descricao agora é obrigatório, não precisa ?? string.Empty
+                
+                // Calcular SLA baseado na prioridade se não foi fornecido
+                var slaEstimadoFim = request.SLA_EstimadoFim ?? CalcularSLAEstimado(request.PrioridadeId);
+                
+                var chamado = await _chamadosRepository.CriarAsync(
+                    tenantId,
+                    tituloSanitizado,
+                    descricaoSanitizada,
+                    request.CategoriaId,
+                    request.PrioridadeId,
+                    request.CanalId,
+                    request.SolicitanteUsuarioId,
+                    request.ResponsavelUsuarioId,
+                    slaEstimadoFim,
+                    ct);
+
+                _logger.LogInformation("✅ Chamado criado com sucesso no repository! ChamadoId: {ChamadoId}, Numero: {Numero}, SLA_EstimadoFim: {SLA}",
+                    chamado.ChamadoId, chamado.Numero, slaEstimadoFim);
+
+                // CORREÇÃO: Incluir nomes legíveis e informações completas
+                return new ChamadoDetailDto(
+                    chamado.ChamadoId,
+                    chamado.Numero,
+                    chamado.Titulo,
+                    chamado.Descricao,
+                    chamado.CategoriaId,
+                    (byte)chamado.StatusId,
+                    (byte)chamado.PrioridadeId,
+                    (byte)chamado.CanalId,
+                    chamado.SolicitanteUsuarioId,
+                    chamado.ResponsavelUsuarioId,
+                    chamado.DataCriacao,
+                    chamado.DataAtualizacao,
+                    EnumHelperService.GetStatusNome(chamado.StatusId), // CORREÇÃO: Nome legível
+                    EnumHelperService.GetPrioridadeNome(chamado.PrioridadeId), // CORREÇÃO: Nome legível
+                    EnumHelperService.GetCanalNome(chamado.CanalId) // CORREÇÃO: Nome legível
+                );
+            }
+            catch (Exception ex) when (ex.Message.Contains("FOREIGN KEY") || ex.Message.Contains("547"))
+            {
+                _logger.LogError(ex, "❌ ERRO SQL: FOREIGN KEY constraint violation. Solicitante: {Solicitante}, Responsavel: {Responsavel}, Mensagem: {Message}",
+                    request.SolicitanteUsuarioId, request.ResponsavelUsuarioId?.ToString() ?? "null", ex.Message);
+                throw new ArgumentException(
+                    "Erro ao criar chamado: usuário informado não existe ou não pertence ao tenant. " +
+                    $"Solicitante: {request.SolicitanteUsuarioId}, " +
+                    $"Responsável: {request.ResponsavelUsuarioId?.ToString() ?? "não informado"}. " +
+                    "Verifique se os IDs estão corretos.", ex);
+            }
+            catch (Exception ex) when (ex.Message.Contains("ChamadoId") && ex.Message.Contains("NULL"))
+            {
+                _logger.LogError(ex, "❌ ERRO SQL: Tentativa de inserir NULL em ChamadoId no histórico. Mensagem: {Message}", ex.Message);
+                throw new InvalidOperationException(
+                    "Erro ao criar chamado: falha na inserção do histórico de status. " +
+                    "A stored procedure pode estar tentando inserir histórico antes do ChamadoId estar disponível. " +
+                    "Verifique a stored procedure 'core.usp_Chamado_Criar'.", ex);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ ERRO INESPERADO ao criar chamado no repository. Tipo: {Type}, Mensagem: {Message}, StackTrace: {StackTrace}",
+                    ex.GetType().Name, ex.Message, ex.StackTrace);
+                throw;
+            }
         }
 
         public async Task<IReadOnlyList<InteracaoDto>> ListarInteracoesAsync(
@@ -169,9 +288,13 @@ namespace CarTechAssist.Application.Services
             AdicionarInteracaoRequest request,
             CancellationToken ct)
         {
+            // CORREÇÃO CRÍTICA: Sanitizar mensagem para prevenir XSS
+            var mensagemSanitizada = _inputSanitizer?.SanitizePreservingLineBreaks(request.Mensagem) ?? request.Mensagem;
+            
             var chamado = await _chamadosRepository.AdicionarInteracaoAsync(
-                chamadoId, tenantId, usuarioId, request.Mensagem, ct);
+                chamadoId, tenantId, usuarioId, mensagemSanitizada, ct);
 
+            // CORREÇÃO: Incluir nomes legíveis
             return new ChamadoDetailDto(
                 chamado.ChamadoId,
                 chamado.Numero,
@@ -184,7 +307,10 @@ namespace CarTechAssist.Application.Services
                 chamado.SolicitanteUsuarioId,
                 chamado.ResponsavelUsuarioId,
                 chamado.DataCriacao,
-                chamado.DataAtualizacao
+                chamado.DataAtualizacao,
+                EnumHelperService.GetStatusNome(chamado.StatusId),
+                EnumHelperService.GetPrioridadeNome(chamado.PrioridadeId),
+                EnumHelperService.GetCanalNome(chamado.CanalId)
             );
         }
 
@@ -198,6 +324,7 @@ namespace CarTechAssist.Application.Services
             var chamado = await _chamadosRepository.AlterarStatusAsync(
                 chamadoId, tenantId, request.NovoStatus, usuarioId, ct);
 
+            // CORREÇÃO: Incluir nomes legíveis
             return new ChamadoDetailDto(
                 chamado.ChamadoId,
                 chamado.Numero,
@@ -210,7 +337,10 @@ namespace CarTechAssist.Application.Services
                 chamado.SolicitanteUsuarioId,
                 chamado.ResponsavelUsuarioId,
                 chamado.DataCriacao,
-                chamado.DataAtualizacao
+                chamado.DataAtualizacao,
+                EnumHelperService.GetStatusNome(chamado.StatusId),
+                EnumHelperService.GetPrioridadeNome(chamado.PrioridadeId),
+                EnumHelperService.GetCanalNome(chamado.CanalId)
             );
         }
 
@@ -231,6 +361,7 @@ namespace CarTechAssist.Application.Services
                 chamadoId, tenantId, modelo, mensagem, confianca, resumoRaciocinio,
                 provedor, inputTokens, outputTokens, custoUsd, ct);
 
+            // CORREÇÃO: Incluir nomes legíveis
             return new ChamadoDetailDto(
                 chamado.ChamadoId,
                 chamado.Numero,
@@ -243,7 +374,10 @@ namespace CarTechAssist.Application.Services
                 chamado.SolicitanteUsuarioId,
                 chamado.ResponsavelUsuarioId,
                 chamado.DataCriacao,
-                chamado.DataAtualizacao
+                chamado.DataAtualizacao,
+                EnumHelperService.GetStatusNome(chamado.StatusId),
+                EnumHelperService.GetPrioridadeNome(chamado.PrioridadeId),
+                EnumHelperService.GetCanalNome(chamado.CanalId)
             );
         }
 
@@ -376,6 +510,22 @@ namespace CarTechAssist.Application.Services
                 scoreEnum,
                 comentario,
                 ct);
+        }
+
+        /// <summary>
+        /// Calcula a data/hora estimada de conclusão do chamado baseado na prioridade
+        /// </summary>
+        private static DateTime CalcularSLAEstimado(byte prioridadeId)
+        {
+            var agora = DateTime.UtcNow;
+            return prioridadeId switch
+            {
+                1 => agora.AddHours(72),  // Baixa: 72 horas (3 dias)
+                2 => agora.AddHours(48),  // Média: 48 horas (2 dias)
+                3 => agora.AddHours(24),   // Alta: 24 horas (1 dia)
+                4 => agora.AddHours(4),   // Urgente: 4 horas
+                _ => agora.AddHours(48)   // Padrão: 48 horas
+            };
         }
     }
 }

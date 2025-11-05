@@ -36,6 +36,7 @@ namespace CarTechAssist.Domain.Interfaces
               byte canalId,
               int solicitanteUsuarioId,
               int? responsavelUsuarioId,
+              DateTime? slaEstimadoFim,
               CancellationToken ct
             );
 

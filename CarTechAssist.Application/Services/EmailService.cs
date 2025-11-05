@@ -27,63 +27,14 @@ namespace CarTechAssist.Application.Services
                 _smtpServer, _smtpPort, _smtpUser);
         }
 
-        public async Task<(bool Sucesso, string? ErroDetalhado)> EnviarEmailComDetalhesAsync(
-            string destinatario,
-            string assunto,
-            string corpo,
-            bool isHtml = true,
-            CancellationToken ct = default)
-        {
-            string? erroDetalhado = null;
-            
-            try
-            {
-                // Chama diretamente a lógica de envio para capturar exceções
-                return await EnviarEmailComDetalhesInternoAsync(destinatario, assunto, corpo, isHtml, ct);
-            }
-            catch (SmtpException ex)
-            {
-                erroDetalhado = $"SmtpException - StatusCode: {ex.StatusCode}, Message: {ex.Message}";
-                if (ex.InnerException != null)
-                {
-                    erroDetalhado += $" | Inner: {ex.InnerException.Message}";
-                }
-                _logger.LogError("❌ Erro capturado em EnviarEmailComDetalhesAsync: {Erro}", erroDetalhado);
-                return (false, erroDetalhado);
-            }
-            catch (System.Security.Authentication.AuthenticationException ex)
-            {
-                erroDetalhado = $"AuthenticationException: {ex.Message}";
-                _logger.LogError("❌ Erro de autenticação: {Erro}", erroDetalhado);
-                return (false, erroDetalhado);
-            }
-            catch (System.Net.Sockets.SocketException ex)
-            {
-                erroDetalhado = $"SocketException - ErrorCode: {ex.SocketErrorCode}, Message: {ex.Message}";
-                _logger.LogError("❌ Erro de socket: {Erro}", erroDetalhado);
-                return (false, erroDetalhado);
-            }
-            catch (Exception ex)
-            {
-                erroDetalhado = $"{ex.GetType().Name}: {ex.Message}";
-                if (ex.InnerException != null)
-                {
-                    erroDetalhado += $" | Inner: {ex.InnerException.Message}";
-                }
-                _logger.LogError("❌ Erro genérico: {Erro}", erroDetalhado);
-                return (false, erroDetalhado);
-            }
-        }
-
-        private async Task<(bool Sucesso, string? ErroDetalhado)> EnviarEmailComDetalhesInternoAsync(
+       
+        private async Task<(bool Sucesso, string? ErroDetalhado)> EnviarEmailInternoAsync(
             string destinatario,
             string assunto,
             string corpo,
             bool isHtml,
             CancellationToken ct)
         {
-            string? erroDetalhado = null;
-            
             try
             {
                 _logger.LogInformation("🔵 ===== INÍCIO ENVIO DE EMAIL =====");
@@ -97,9 +48,9 @@ namespace CarTechAssist.Application.Services
                 // Validar email do destinatário
                 if (string.IsNullOrWhiteSpace(destinatario) || !destinatario.Contains("@"))
                 {
-                    erroDetalhado = $"Email destinatário inválido: {destinatario}";
-                    _logger.LogError("❌ {Erro}", erroDetalhado);
-                    return (false, erroDetalhado);
+                    var erro = $"Email destinatário inválido: {destinatario}";
+                    _logger.LogError("❌ {Erro}", erro);
+                    return (false, erro);
                 }
 
                 // Configurar SMTP Client
@@ -141,7 +92,6 @@ namespace CarTechAssist.Application.Services
                 _logger.LogInformation("🔵 ===== TENTANDO ENVIAR =====");
                 _logger.LogInformation("🔵 Conectando ao servidor {Servidor}:{Porta}...", _smtpServer, _smtpPort);
                 
-                // Tentar enviar - LANÇAR EXCEÇÃO em caso de erro
                 await smtpClient.SendMailAsync(mensagem, ct);
                 
                 _logger.LogInformation("✅ ===== EMAIL ENVIADO COM SUCESSO =====");
@@ -149,40 +99,67 @@ namespace CarTechAssist.Application.Services
             }
             catch (SmtpException ex)
             {
-                erroDetalhado = $"SmtpException - StatusCode: {ex.StatusCode}, Message: {ex.Message}";
+                var erro = $"SmtpException - StatusCode: {ex.StatusCode}, Message: {ex.Message}";
                 if (ex.InnerException != null)
                 {
-                    erroDetalhado += $" | Inner: {ex.InnerException.Message}";
+                    erro += $" | Inner: {ex.InnerException.Message}";
                 }
                 _logger.LogError("❌ ===== ERRO SMTP DETALHADO =====");
-                _logger.LogError("❌ {Erro}", erroDetalhado);
-                throw; // Re-lançar para ser capturado pelo método pai
+                _logger.LogError("❌ {Erro}", erro);
+                
+                if (ex.Message.Contains("Authentication") || ex.Message.Contains("535") || ex.Message.Contains("534"))
+                {
+                    _logger.LogError("❌ PROBLEMA: Autenticação falhou! Verifique:");
+                    _logger.LogError("   1. App Password está correto? (16 caracteres, sem espaços)");
+                    _logger.LogError("   2. Conta tem 2FA ativado?");
+                    _logger.LogError("   3. App Password foi gerado recentemente?");
+                }
+                else if (ex.Message.Contains("Connection") || ex.Message.Contains("timeout") || ex.Message.Contains("refused"))
+                {
+                    _logger.LogError("❌ PROBLEMA: Falha de conexão! Verifique firewall, internet ou servidor acessível");
+                }
+                
+                return (false, erro);
             }
             catch (System.Security.Authentication.AuthenticationException ex)
             {
-                erroDetalhado = $"AuthenticationException: {ex.Message}";
+                var erro = $"AuthenticationException: {ex.Message}";
                 _logger.LogError("❌ ===== ERRO DE AUTENTICAÇÃO =====");
-                _logger.LogError("❌ {Erro}", erroDetalhado);
-                throw; // Re-lançar
+                _logger.LogError("❌ {Erro}", erro);
+                return (false, erro);
             }
             catch (System.Net.Sockets.SocketException ex)
             {
-                erroDetalhado = $"SocketException - ErrorCode: {ex.SocketErrorCode}, Message: {ex.Message}";
+                var erro = $"SocketException - ErrorCode: {ex.SocketErrorCode}, Message: {ex.Message}";
                 _logger.LogError("❌ ===== ERRO DE CONEXÃO DE REDE =====");
-                _logger.LogError("❌ {Erro}", erroDetalhado);
-                throw; // Re-lançar
+                _logger.LogError("❌ {Erro}", erro);
+                return (false, erro);
             }
             catch (Exception ex)
             {
-                erroDetalhado = $"{ex.GetType().Name}: {ex.Message}";
+                var erro = $"{ex.GetType().Name}: {ex.Message}";
                 if (ex.InnerException != null)
                 {
-                    erroDetalhado += $" | Inner: {ex.InnerException.Message}";
+                    erro += $" | Inner: {ex.InnerException.Message}";
                 }
                 _logger.LogError("❌ ===== ERRO GENÉRICO =====");
-                _logger.LogError("❌ {Erro}", erroDetalhado);
-                throw; // Re-lançar
+                _logger.LogError("❌ {Erro}", erro);
+                return (false, erro);
             }
+            finally
+            {
+                _logger.LogInformation("🔵 ===== FIM TENTATIVA DE ENVIO =====");
+            }
+        }
+
+        public async Task<(bool Sucesso, string? ErroDetalhado)> EnviarEmailComDetalhesAsync(
+            string destinatario,
+            string assunto,
+            string corpo,
+            bool isHtml = true,
+            CancellationToken ct = default)
+        {
+            return await EnviarEmailInternoAsync(destinatario, assunto, corpo, isHtml, ct);
         }
 
         public async Task<bool> EnviarEmailAsync(
@@ -192,139 +169,8 @@ namespace CarTechAssist.Application.Services
             bool isHtml = true,
             CancellationToken ct = default)
         {
-            try
-            {
-                _logger.LogInformation("🔵 ===== INÍCIO ENVIO DE EMAIL =====");
-                _logger.LogInformation("🔵 Servidor: {Servidor}:{Porta}", _smtpServer, _smtpPort);
-                _logger.LogInformation("🔵 De: {De}", _smtpUser);
-                _logger.LogInformation("🔵 Para: {Para}", destinatario);
-                _logger.LogInformation("🔵 Assunto: {Assunto}", assunto);
-                _logger.LogInformation("🔵 App Password (primeiros 4 chars): {PrimeirosChars}...", 
-                    _smtpPass.Length >= 4 ? _smtpPass.Substring(0, 4) : "****");
-
-                // Validar email do destinatário
-                if (string.IsNullOrWhiteSpace(destinatario) || !destinatario.Contains("@"))
-                {
-                    _logger.LogError("❌ Email destinatário inválido: {Destinatario}", destinatario);
-                    return false;
-                }
-
-                // Configurar SMTP Client com todas as opções necessárias
-                using var smtpClient = new SmtpClient(_smtpServer, _smtpPort)
-                {
-                    EnableSsl = true,
-                    UseDefaultCredentials = false,
-                    DeliveryMethod = SmtpDeliveryMethod.Network,
-                    Timeout = 60000 // 60 segundos
-                };
-
-                // Credenciais separadas para debug
-                _logger.LogInformation("🔵 Configurando credenciais. User: {User}, Pass Length: {PassLength}", 
-                    _smtpUser, _smtpPass?.Length ?? 0);
-                
-                // IMPORTANTE: Gmail requer NetworkCredential com email completo
-                smtpClient.Credentials = new NetworkCredential(_smtpUser, _smtpPass);
-                
-                _logger.LogInformation("🔵 SMTP Client configurado:");
-                _logger.LogInformation("   Host: {Host}", smtpClient.Host);
-                _logger.LogInformation("   Port: {Port}", smtpClient.Port);
-                _logger.LogInformation("   SSL: {SSL}", smtpClient.EnableSsl);
-                _logger.LogInformation("   Timeout: {Timeout}ms", smtpClient.Timeout);
-                _logger.LogInformation("   DeliveryMethod: {DeliveryMethod}", smtpClient.DeliveryMethod);
-
-                using var mensagem = new MailMessage
-                {
-                    From = new MailAddress(_smtpUser, "CarTechAssist"),
-                    Subject = assunto,
-                    Body = corpo,
-                    IsBodyHtml = isHtml
-                };
-
-                var emailDestino = new MailAddress(destinatario);
-                mensagem.To.Add(emailDestino);
-                
-                _logger.LogInformation("🔵 Mensagem criada:");
-                _logger.LogInformation("   From: {From} ({FromAddress})", mensagem.From.DisplayName, mensagem.From.Address);
-                _logger.LogInformation("   To: {To} ({ToAddress})", emailDestino.DisplayName, emailDestino.Address);
-                _logger.LogInformation("   Subject: {Subject}", mensagem.Subject);
-                _logger.LogInformation("   Body Length: {BodyLength} chars, IsHtml: {IsHtml}", 
-                    mensagem.Body?.Length ?? 0, mensagem.IsBodyHtml);
-
-                _logger.LogInformation("🔵 ===== TENTANDO ENVIAR =====");
-                _logger.LogInformation("🔵 Conectando ao servidor {Servidor}:{Porta}...", _smtpServer, _smtpPort);
-                
-                // Tentar enviar email
-                await smtpClient.SendMailAsync(mensagem, ct);
-                
-                _logger.LogInformation("✅ ===== EMAIL ENVIADO COM SUCESSO =====");
-                _logger.LogInformation("✅ Destinatário: {Destinatario}", destinatario);
-                return true;
-            }
-            catch (SmtpException ex)
-            {
-                _logger.LogError("❌ ===== ERRO SMTP DETALHADO =====");
-                _logger.LogError("❌ StatusCode: {StatusCode}", ex.StatusCode);
-                _logger.LogError("❌ Mensagem: {Message}", ex.Message);
-                _logger.LogError("❌ InnerException: {InnerException}", ex.InnerException?.Message ?? "(null)");
-                _logger.LogError("❌ StackTrace: {StackTrace}", ex.StackTrace);
-                
-                // Informações específicas por tipo de erro
-                var statusCodeStr = ex.StatusCode.ToString();
-                _logger.LogError("❌ StatusCode String: {StatusCodeStr}", statusCodeStr);
-                
-                if (ex.Message.Contains("Authentication") || ex.Message.Contains("authentication") || 
-                    ex.Message.Contains("535") || ex.Message.Contains("534"))
-                {
-                    _logger.LogError("❌ PROBLEMA: Autenticação falhou! Verifique:");
-                    _logger.LogError("   1. App Password está correto? (16 caracteres, sem espaços)");
-                    _logger.LogError("   2. Conta tem 2FA ativado?");
-                    _logger.LogError("   3. App Password foi gerado recentemente?");
-                    _logger.LogError("   4. Gmail pode ter bloqueado acesso - verifique: https://myaccount.google.com/lesssecureapps");
-                }
-                else if (ex.Message.Contains("Connection") || ex.Message.Contains("timeout") || 
-                         ex.Message.Contains("refused") || ex.Message.Contains("Unable"))
-                {
-                    _logger.LogError("❌ PROBLEMA: Falha de conexão! Verifique:");
-                    _logger.LogError("   1. Firewall bloqueando porta 587?");
-                    _logger.LogError("   2. Internet conectada?");
-                    _logger.LogError("   3. Servidor SMTP acessível? Teste: telnet smtp.gmail.com 587");
-                }
-                
-                return false;
-            }
-            catch (System.Security.Authentication.AuthenticationException ex)
-            {
-                _logger.LogError("❌ ===== ERRO DE AUTENTICAÇÃO =====");
-                _logger.LogError("❌ Mensagem: {Message}", ex.Message);
-                _logger.LogError("❌ StackTrace: {StackTrace}", ex.StackTrace);
-                _logger.LogError("❌ SOLUÇÃO: Verifique as credenciais do Gmail:");
-                _logger.LogError("   1. App Password: {AppPassLength} caracteres", _smtpPass.Length);
-                _logger.LogError("   2. Usuário: {Usuario}", _smtpUser);
-                _logger.LogError("   3. Conta tem 2FA ativado?");
-                return false;
-            }
-            catch (System.Net.Sockets.SocketException ex)
-            {
-                _logger.LogError("❌ ===== ERRO DE CONEXÃO DE REDE =====");
-                _logger.LogError("❌ Socket Error: {SocketError}", ex.SocketErrorCode);
-                _logger.LogError("❌ Mensagem: {Message}", ex.Message);
-                _logger.LogError("❌ PROBLEMA: Não foi possível conectar ao servidor SMTP!");
-                _logger.LogError("   Verifique firewall, internet ou servidor inacessível");
-                return false;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError("❌ ===== ERRO GENÉRICO =====");
-                _logger.LogError("❌ Tipo: {Tipo}", ex.GetType().FullName);
-                _logger.LogError("❌ Mensagem: {Mensagem}", ex.Message);
-                _logger.LogError("❌ InnerException: {InnerException}", ex.InnerException?.Message ?? "(null)");
-                _logger.LogError("❌ StackTrace: {StackTrace}", ex.StackTrace);
-                return false;
-            }
-            finally
-            {
-                _logger.LogInformation("🔵 ===== FIM TENTATIVA DE ENVIO =====");
-            }
+            var (sucesso, _) = await EnviarEmailInternoAsync(destinatario, assunto, corpo, isHtml, ct);
+            return sucesso;
         }
 
         public async Task<bool> EnviarCodigoRecuperacaoAsync(

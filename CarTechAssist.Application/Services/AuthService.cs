@@ -3,6 +3,7 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using CarTechAssist.Contracts.Auth;
+using CarTechAssist.Domain.Entities;
 using CarTechAssist.Domain.Enums;
 using CarTechAssist.Domain.Interfaces;
 using Microsoft.Extensions.Configuration;
@@ -14,12 +15,18 @@ namespace CarTechAssist.Application.Services
     public class AuthService
     {
         private readonly IUsuariosRepository _usuariosRepository;
+        private readonly IRefreshTokenRepository _refreshTokenRepository;
         private readonly IConfiguration _configuration;
         private readonly ILogger<AuthService> _logger;
 
-        public AuthService(IUsuariosRepository usuariosRepository, IConfiguration configuration, ILogger<AuthService> logger)
+        public AuthService(
+            IUsuariosRepository usuariosRepository, 
+            IRefreshTokenRepository refreshTokenRepository,
+            IConfiguration configuration, 
+            ILogger<AuthService> logger)
         {
             _usuariosRepository = usuariosRepository;
+            _refreshTokenRepository = refreshTokenRepository;
             _configuration = configuration;
             _logger = logger;
         }
@@ -55,11 +62,24 @@ namespace CarTechAssist.Application.Services
 
             // Gerar tokens
             var token = GerarJwtToken(usuario);
-            var refreshToken = GerarRefreshToken();
+            var refreshTokenString = GerarRefreshToken();
+            
+            // Salvar refresh token no banco
+            var refreshTokenExpirationDays = int.Parse(_configuration["Jwt:RefreshTokenExpirationDays"] ?? "7");
+            var refreshToken = new RefreshToken
+            {
+                UsuarioId = usuario.UsuarioId,
+                Token = refreshTokenString,
+                ExpiraEm = DateTime.UtcNow.AddDays(refreshTokenExpirationDays),
+                Revogado = false,
+                DataCriacao = DateTime.UtcNow
+            };
+            
+            await _refreshTokenRepository.CriarAsync(refreshToken, ct);
 
             return new LoginResponse(
                 token,
-                refreshToken,
+                refreshTokenString,
                 usuario.UsuarioId,
                 usuario.NomeCompleto,
                 usuario.TenantId,
@@ -88,11 +108,12 @@ namespace CarTechAssist.Application.Services
                 new Claim(ClaimTypes.Role, tipoUsuarioIdNumero) // Usar número, não string do enum
             };
 
+            var expirationMinutes = int.Parse(_configuration["Jwt:AccessTokenExpirationMinutes"] ?? "15");
             var token = new JwtSecurityToken(
                 issuer: _configuration["Jwt:Issuer"],
                 audience: _configuration["Jwt:Audience"],
                 claims: claims,
-                expires: DateTime.UtcNow.AddHours(8),
+                expires: DateTime.UtcNow.AddMinutes(expirationMinutes),
                 signingCredentials: creds
             );
 
@@ -147,21 +168,56 @@ namespace CarTechAssist.Application.Services
             );
         }
 
-        public Task<LoginResponse?> RenovarTokenAsync(string refreshToken, CancellationToken ct)
+        public async Task<LoginResponse?> RenovarTokenAsync(string refreshToken, CancellationToken ct)
         {
             _logger.LogInformation("Tentativa de renovação de token com refresh token");
             
-            // TODO: Implementar validação do refresh token no banco de dados
-            // Por enquanto, apenas retorna null para indicar que precisa fazer login novamente
-            // Em produção, você deve:
-            // 1. Armazenar refresh tokens no banco (ex: tabela RefreshToken)
-            // 2. Validar se o token existe e não está expirado
-            // 3. Buscar o usuário associado ao token
-            // 4. Gerar novo JWT e novo refresh token
-            // 5. Invalidar o refresh token antigo
+            // Validar refresh token no banco
+            var storedToken = await _refreshTokenRepository.ObterPorTokenAsync(refreshToken, ct);
+            if (storedToken == null)
+            {
+                _logger.LogWarning("Refresh token inválido ou expirado");
+                return null;
+            }
+
+            // Buscar usuário
+            var usuario = await _usuariosRepository.ObterPorIdAsync(storedToken.UsuarioId, ct);
+            if (usuario == null || !usuario.Ativo || usuario.Excluido)
+            {
+                _logger.LogWarning("Usuário não encontrado ou inativo para refresh token. UsuarioId: {UsuarioId}", storedToken.UsuarioId);
+                await _refreshTokenRepository.RevogarAsync(storedToken.RefreshTokenId, ct);
+                return null;
+            }
+
+            // Revogar token antigo (rotação de tokens)
+            await _refreshTokenRepository.RevogarAsync(storedToken.RefreshTokenId, ct);
+
+            // Gerar novos tokens
+            var newToken = GerarJwtToken(usuario);
+            var newRefreshTokenString = GerarRefreshToken();
             
-            _logger.LogWarning("Refresh token não implementado. Retornando null.");
-            return Task.FromResult<LoginResponse?>(null);
+            var refreshTokenExpirationDays = int.Parse(_configuration["Jwt:RefreshTokenExpirationDays"] ?? "7");
+            var newRefreshToken = new RefreshToken
+            {
+                UsuarioId = usuario.UsuarioId,
+                Token = newRefreshTokenString,
+                ExpiraEm = DateTime.UtcNow.AddDays(refreshTokenExpirationDays),
+                Revogado = false,
+                DataCriacao = DateTime.UtcNow
+            };
+            
+            await _refreshTokenRepository.CriarAsync(newRefreshToken, ct);
+
+            _logger.LogInformation("Token renovado com sucesso. UsuarioId: {UsuarioId}", usuario.UsuarioId);
+
+            return new LoginResponse(
+                newToken,
+                newRefreshTokenString,
+                usuario.UsuarioId,
+                usuario.NomeCompleto,
+                usuario.TenantId,
+                (byte)usuario.TipoUsuarioId
+            );
         }
     }
 }

@@ -34,12 +34,12 @@ namespace CarTechAssist.Web.Pages
             _logger = logger;
         }
 
-        public async Task<IActionResult> OnGetAsync(CancellationToken ct = default)
+        public Task<IActionResult> OnGetAsync(CancellationToken ct = default)
         {
             var token = HttpContext.Session.GetString("Token");
             if (string.IsNullOrEmpty(token))
             {
-                return RedirectToPage("/Login");
+                return Task.FromResult<IActionResult>(RedirectToPage("/Login"));
             }
 
             // Verificar se é Cliente
@@ -48,14 +48,14 @@ namespace CarTechAssist.Web.Pages
             {
                 _logger.LogWarning("TipoUsuarioId não encontrado na sessão. Redirecionando para login.");
                 ErrorMessage = "Informações de permissão não encontradas. Por favor, faça login novamente.";
-                return Page();
+                return Task.FromResult<IActionResult>(Page());
             }
             
             if (!byte.TryParse(tipoUsuarioIdStr, out var tipoUsuarioId) || tipoUsuarioId != 1)
             {
                 _logger.LogWarning("Usuário não é Cliente. TipoUsuarioId: {TipoUsuarioId}.", tipoUsuarioIdStr);
                 ErrorMessage = $"Você não tem permissão para usar o ChatBot. Esta funcionalidade é apenas para clientes. (Seu perfil: TipoUsuarioId = {tipoUsuarioIdStr})";
-                return Page(); // Mostrar página com mensagem de erro em vez de redirecionar
+                return Task.FromResult<IActionResult>(Page()); // Mostrar página com mensagem de erro em vez de redirecionar
             }
             
             _logger.LogInformation("Acesso ao ChatBot autorizado. TipoUsuarioId: {TipoUsuarioId}", tipoUsuarioId);
@@ -75,11 +75,11 @@ namespace CarTechAssist.Web.Pages
             if (!int.TryParse(usuarioIdStr, out var usuarioId))
             {
                 _logger.LogWarning("UsuarioId inválido na sessão: {UsuarioIdStr}", usuarioIdStr);
-                return RedirectToPage("/Login");
+                return Task.FromResult<IActionResult>(RedirectToPage("/Login"));
             }
             UsuarioId = usuarioId;
 
-            return Page();
+            return Task.FromResult<IActionResult>(Page());
         }
 
         public async Task<IActionResult> OnPostAsync(CancellationToken ct = default)

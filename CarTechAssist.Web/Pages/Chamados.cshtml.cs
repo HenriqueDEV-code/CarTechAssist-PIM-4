@@ -64,16 +64,51 @@ namespace CarTechAssist.Web.Pages
                 // Se for Cliente, filtrar apenas seus chamados
                 int? solicitanteUsuarioId = tipoUsuarioId == 1 ? UsuarioId : null;
 
+                _logger.LogInformation("Carregando chamados. TenantId: {TenantId}, UsuarioId: {UsuarioId}, TipoUsuarioId: {TipoUsuarioId}, StatusId: {StatusId}, SolicitanteUsuarioId: {SolicitanteUsuarioId}",
+                    TenantId, UsuarioId, tipoUsuarioId, statusId, solicitanteUsuarioId);
+
                 Chamados = await _chamadosService.ListarAsync(
                     statusId: statusId,
                     solicitanteUsuarioId: solicitanteUsuarioId,
                     page: page,
                     pageSize: PageSize,
                     ct: ct);
+
+                _logger.LogInformation("Chamados carregados com sucesso. Total: {Total}", Chamados?.Total ?? 0);
+            }
+            catch (System.Net.Http.HttpRequestException httpEx)
+            {
+                _logger.LogError(httpEx, "Erro HTTP ao carregar chamados. StatusCode: {StatusCode}, Message: {Message}",
+                    httpEx.Data.Contains("StatusCode") ? httpEx.Data["StatusCode"] : "Desconhecido",
+                    httpEx.Data.Contains("Message") ? httpEx.Data["Message"] : httpEx.Message);
+                
+                // Verificar se é erro de autenticação
+                if (httpEx.Data.Contains("StatusCode") && httpEx.Data["StatusCode"] is System.Net.HttpStatusCode statusCode)
+                {
+                    if (statusCode == System.Net.HttpStatusCode.Unauthorized)
+                    {
+                        ErrorMessage = "Sua sessão expirou. Por favor, faça login novamente.";
+                        return RedirectToPage("/Login");
+                    }
+                    else if (statusCode == System.Net.HttpStatusCode.Forbidden)
+                    {
+                        ErrorMessage = "Você não tem permissão para acessar esta página.";
+                    }
+                    else
+                    {
+                        var apiMessage = httpEx.Data.Contains("Message") ? httpEx.Data["Message"]?.ToString() : null;
+                        ErrorMessage = !string.IsNullOrEmpty(apiMessage) ? apiMessage : $"Erro ao carregar chamados: {httpEx.Message}";
+                    }
+                }
+                else
+                {
+                    ErrorMessage = $"Erro ao carregar chamados: {httpEx.Message}";
+                }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Erro ao carregar chamados");
+                _logger.LogError(ex, "Erro inesperado ao carregar chamados. Tipo: {Type}, Mensagem: {Message}, StackTrace: {StackTrace}",
+                    ex.GetType().Name, ex.Message, ex.StackTrace);
                 ErrorMessage = "Erro ao carregar chamados. Tente novamente.";
             }
 
