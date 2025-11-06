@@ -94,6 +94,39 @@ namespace CarTechAssist.Api.Controllers
             }
         }
 
+        /// <summary>
+        /// Endpoint público para registro de clientes (sem autenticação)
+        /// </summary>
+        [HttpPost("registro-publico")]
+        [Microsoft.AspNetCore.Authorization.AllowAnonymous]
+        public async Task<ActionResult<UsuarioDto>> RegistroPublico(
+            [FromBody] CriarUsuarioRequest request,
+            CancellationToken ct = default)
+        {
+            try
+            {
+                // Validar que é apenas para clientes
+                if (request.TipoUsuarioId != 1)
+                {
+                    return BadRequest(new { message = "Este endpoint é apenas para registro de clientes." });
+                }
+
+                // TenantId padrão para registro público
+                var tenantId = 1;
+
+                var result = await _usuariosService.CriarAsync(tenantId, request, ct);
+                return CreatedAtAction(nameof(Obter), new { id = result.UsuarioId }, result);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Erro ao criar conta. Tente novamente." });
+            }
+        }
+
         [HttpPut("{id:int}")]
         [AuthorizeRoles(3)] // Apenas Admin(3) pode atualizar usuários
         public async Task<ActionResult<UsuarioDto>> Atualizar(

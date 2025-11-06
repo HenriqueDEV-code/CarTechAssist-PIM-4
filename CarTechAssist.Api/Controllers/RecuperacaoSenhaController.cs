@@ -83,9 +83,34 @@ namespace CarTechAssist.Api.Controllers
                 _logger.LogError("🚫🚫🚫 VALIDAÇÃO FALHOU NO CONTROLLER - Erro na recuperação de senha: {Erro}", ex.Message);
                 _logger.LogError("Stack trace: {StackTrace}", ex.StackTrace);
                 
-                // Retornar BadRequest com a mensagem de erro clara
+                // CORREÇÃO DE SEGURANÇA: Não retornar a mensagem da exceção diretamente (pode conter email)
+                // Verificar se a mensagem contém informações sensíveis e sanitizar
+                string mensagemSegura;
+                if (ex.Message.Contains("email cadastrado para o login") || ex.Message.Contains("é:"))
+                {
+                    // Se a mensagem contém email exposto, usar mensagem genérica
+                    if (ex.Message.Contains("não corresponde"))
+                    {
+                        mensagemSegura = "O email informado não corresponde ao cadastrado.";
+                    }
+                    else if (ex.Message.Contains("não encontrado"))
+                    {
+                        mensagemSegura = "Usuário não encontrado.";
+                    }
+                    else
+                    {
+                        mensagemSegura = "Erro ao processar solicitação. Verifique os dados informados.";
+                    }
+                }
+                else
+                {
+                    // Se não contém informações sensíveis, usar a mensagem original
+                    mensagemSegura = ex.Message;
+                }
+                
+                // Retornar BadRequest com mensagem sanitizada
                 return BadRequest(new { 
-                    message = ex.Message,
+                    message = mensagemSegura,
                     success = false,
                     error = "EmailInvalido"
                 });

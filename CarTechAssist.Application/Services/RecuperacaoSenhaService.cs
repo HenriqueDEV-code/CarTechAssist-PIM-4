@@ -74,9 +74,10 @@ namespace CarTechAssist.Application.Services
                 _logger.LogError("  - Email cadastrado: '{EmailCadastrado}'", emailCadastradoOriginal);
                 _logger.LogError("  - Email fornecido: '{EmailFornecido}'", emailInformadoOriginal);
                 
+                // CORREÇÃO DE SEGURANÇA: Não expor o email cadastrado na mensagem de erro
                 var mensagemErro = string.IsNullOrWhiteSpace(emailCadastradoOriginal)
                     ? "Nenhum email cadastrado para este usuário."
-                    : $"O email informado não corresponde ao cadastrado. O email cadastrado para o login '{login}' é: {emailCadastradoOriginal}";
+                    : "O email informado não corresponde ao cadastrado.";
                 
                 throw new InvalidOperationException(mensagemErro);
             }
@@ -226,9 +227,10 @@ namespace CarTechAssist.Application.Services
                 
                 // PARAR AQUI - Não processar mais nada!
                 // Lançar exceção ANTES de qualquer processamento adicional (limpar códigos, gerar código, etc.)
-                var mensagemErro = $"O email informado não corresponde ao cadastrado. O email cadastrado para o login '{loginTrimmed}' é: {emailCadastradoOriginal}";
+                // CORREÇÃO DE SEGURANÇA: Não expor o email cadastrado na mensagem de erro
+                var mensagemErro = "O email informado não corresponde ao cadastrado.";
                 
-                _logger.LogError("🚫🚫🚫 LANÇANDO EXCEÇÃO E PARANDO PROCESSAMENTO: {MensagemErro}", mensagemErro);
+                _logger.LogError("🚫🚫🚫 LANÇANDO EXCEÇÃO E PARANDO PROCESSAMENTO: Email não corresponde para login '{Login}'", loginTrimmed);
                 
                 throw new InvalidOperationException(mensagemErro);
             }
@@ -248,7 +250,8 @@ namespace CarTechAssist.Application.Services
             if (!verificacaoFinalCadastrado.Equals(verificacaoFinalInformado, StringComparison.Ordinal))
             {
                 _logger.LogError("🚨🚨🚨 FALHA NA VERIFICAÇÃO FINAL: Email ainda não corresponde!");
-                throw new InvalidOperationException($"O email informado não corresponde ao cadastrado. O email cadastrado para o login '{loginTrimmed}' é: {usuario.Email ?? "N/A"}");
+                // CORREÇÃO DE SEGURANÇA: Não expor o email cadastrado na mensagem de erro
+                throw new InvalidOperationException("O email informado não corresponde ao cadastrado.");
             }
 
             // ═══════════════════════════════════════════════════════════════

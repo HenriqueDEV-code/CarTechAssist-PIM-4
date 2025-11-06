@@ -23,6 +23,9 @@ namespace CarTechAssist.Web.Pages.Chamados
         [BindProperty]
         public IFormFile? ArquivoUpload { get; set; }
 
+        [BindProperty]
+        public byte? NovoStatus { get; set; }
+
         public int TenantId { get; set; }
         public int UsuarioId { get; set; }
         public byte TipoUsuarioId { get; set; }
@@ -80,6 +83,38 @@ namespace CarTechAssist.Web.Pages.Chamados
                     _logger.LogWarning("Usuário {UsuarioId} tentou acessar chamado {ChamadoId} sem permissão", usuarioId, id);
                     ErrorMessage = "Você não tem permissão para ver este chamado.";
                     return RedirectToPage("/Chamados");
+                }
+
+                // CORREÇÃO: Se for Técnico (2) ou Admin (3) e o chamado estiver "Aberto" (1), alterar automaticamente para "Em Andamento" (2)
+                // IMPORTANTE: Só fazer isso na primeira vez que o técnico acessa, não em recarregamentos
+                // Verificar se não é um recarregamento após alteração de status ou envio de mensagem (verificar query string)
+                var isReloadAfterStatusChange = Request.Query.ContainsKey("statusChanged");
+                var isReloadAfterMessage = Request.Query.ContainsKey("messageSent");
+                
+                if ((tipoUsuarioId == 2 || tipoUsuarioId == 3) && Chamado.StatusId == 1 && !isReloadAfterStatusChange && !isReloadAfterMessage)
+                {
+                    try
+                    {
+                        _logger.LogInformation("Técnico/Admin {UsuarioId} acessou chamado {ChamadoId} com status Aberto. Alterando automaticamente para Em Andamento.",
+                            usuarioId, id);
+
+                        var alterarStatusRequest = new AlterarStatusRequest(NovoStatus: 2); // 2 = Em Andamento
+                        var resultado = await _chamadosService.AlterarStatusAsync(id, alterarStatusRequest, ct);
+                        
+                        if (resultado != null)
+                        {
+                            // Atualizar o objeto Chamado com o novo status
+                            Chamado = resultado;
+                            _logger.LogInformation("Status do chamado {ChamadoId} alterado automaticamente de Aberto para Em Andamento pelo usuário {UsuarioId}",
+                                id, usuarioId);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        // Log do erro mas não bloquear o acesso ao chamado
+                        _logger.LogWarning(ex, "Erro ao alterar status automaticamente do chamado {ChamadoId} para Em Andamento. Continuando com o status atual.",
+                            id);
+                    }
                 }
 
                 // Carregar interações (mensagens)
@@ -166,8 +201,10 @@ namespace CarTechAssist.Web.Pages.Chamados
                 {
                     SuccessMessage = "Mensagem enviada com sucesso!";
                     NovaMensagem = string.Empty;
-                    // Recarregar página para mostrar nova mensagem
-                    return await OnGetAsync(id, ct);
+                    // Aguardar um pouco para garantir que a mensagem foi salva no banco
+                    await Task.Delay(500, ct);
+                    // Recarregar página para mostrar nova mensagem, mas sem alterar status automaticamente
+                    return RedirectToPage("/Chamados/Detalhes", new { id = id, messageSent = true });
                 }
                 else
                 {
@@ -211,6 +248,60 @@ namespace CarTechAssist.Web.Pages.Chamados
             return await OnGetAsync(id, ct);
         }
 
+        public async Task<IActionResult> OnPostAlterarStatusAsync(long id, CancellationToken ct = default)
+        {
+            var token = HttpContext.Session.GetString("Token");
+            if (string.IsNullOrEmpty(token))
+            {
+                return RedirectToPage("/Login");
+            }
+
+            var usuarioIdStr = HttpContext.Session.GetString("UsuarioId");
+            if (!int.TryParse(usuarioIdStr, out var usuarioId))
+            {
+                return RedirectToPage("/Login");
+            }
+
+            var tipoUsuarioIdStr = HttpContext.Session.GetString("TipoUsuarioId");
+            if (!byte.TryParse(tipoUsuarioIdStr, out var tipoUsuarioId) || (tipoUsuarioId != 2 && tipoUsuarioId != 3))
+            {
+                ErrorMessage = "Apenas técnicos podem alterar o status do chamado.";
+                return await OnGetAsync(id, ct);
+            }
+
+            if (!NovoStatus.HasValue)
+            {
+                ErrorMessage = "Selecione um status válido.";
+                return await OnGetAsync(id, ct);
+            }
+
+            try
+            {
+                var request = new AlterarStatusRequest(NovoStatus: NovoStatus.Value);
+                var resultado = await _chamadosService.AlterarStatusAsync(id, request, ct);
+                
+                if (resultado != null)
+                {
+                    SuccessMessage = "Status atualizado com sucesso!";
+                    // Aguardar um pouco para garantir que o status foi salvo no banco antes de recarregar
+                    await Task.Delay(500, ct);
+                    // Recarregar página para mostrar novo status, adicionando flag para evitar alteração automática
+                    return RedirectToPage("/Chamados/Detalhes", new { id = id, statusChanged = true });
+                }
+                else
+                {
+                    ErrorMessage = "Erro ao atualizar status.";
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Erro ao alterar status do chamado {ChamadoId}", id);
+                ErrorMessage = "Erro ao atualizar status. Tente novamente.";
+            }
+
+            return await OnGetAsync(id, ct);
+        }
+
         public string GetTipoUsuarioNome(byte tipoUsuarioId)
         {
             return tipoUsuarioId switch
@@ -229,10 +320,18 @@ namespace CarTechAssist.Web.Pages.Chamados
             {
                 1 => "Aberto",
                 2 => "Em Andamento",
-                3 => "Resolvido",
-                4 => "Cancelado",
+                3 => "Aguardando Usuário",
+                4 => "Resolvido",
+                5 => "Fechado",
+                6 => "Cancelado",
                 _ => "Desconhecido"
             };
+        }
+
+        public bool IsTecnico()
+        {
+            // Técnico = TipoUsuarioId 2 (Agente) ou 3 (Admin)
+            return TipoUsuarioId == 2 || TipoUsuarioId == 3;
         }
 
         public string GetPrioridadeNome(byte prioridadeId)

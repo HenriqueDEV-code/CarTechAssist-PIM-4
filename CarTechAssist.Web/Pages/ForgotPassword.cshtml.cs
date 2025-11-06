@@ -119,12 +119,9 @@ namespace CarTechAssist.Web.Pages
                     }
                     else if (!emailEnviado)
                     {
-                        // Email não foi enviado - mostrar código na tela (modo debug)
-                        EmailFalhou = true;
-                        CodigoRecuperacao = codigo;
-                        SuccessMessage = $"⚠️ O email não pôde ser enviado, mas o código foi gerado!";
-                        InfoMessage = $"Código de recuperação: {codigo} (Use este código para redefinir sua senha)";
-                        EmailSent = true;
+                        // Email não foi enviado - não mostrar código na tela por segurança
+                        ErrorMessage = "Não foi possível enviar o email. Verifique se o email está configurado corretamente no servidor ou entre em contato com o suporte.";
+                        _logger.LogWarning("Email não enviado para recuperação de senha. Login: {Login}, Email: {Email}", Login, Email);
                     }
                     else
                     {

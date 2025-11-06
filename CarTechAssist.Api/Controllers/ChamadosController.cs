@@ -309,14 +309,31 @@ namespace CarTechAssist.Api.Controllers
         }
 
         [HttpPatch("{id:long}/status")]
+        [Microsoft.AspNetCore.Authorization.Authorize]
         public async Task<IActionResult> AlterarStatus(
             long id,
             [FromBody] AlterarStatusRequest request,
             CancellationToken ct = default)
         {
-            var result = await _chamadosService.AlterarStatusAsync(
-                GetTenantId(), id, GetUsuarioId(), request, ct);
-            return Ok(result);
+            try
+            {
+                // Verificar se o usuário é técnico (TipoUsuarioId = 2 ou 3)
+                var tipoUsuarioIdStr = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value;
+                if (!byte.TryParse(tipoUsuarioIdStr, out var tipoUsuarioId) || (tipoUsuarioId != 2 && tipoUsuarioId != 3))
+                {
+                    return StatusCode(403, new { message = "Apenas técnicos podem alterar o status do chamado." });
+                }
+
+                var result = await _chamadosService.AlterarStatusAsync(
+                    GetTenantId(), id, GetUsuarioId(), request, ct);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                var logger = HttpContext.RequestServices.GetRequiredService<ILogger<ChamadosController>>();
+                logger.LogError(ex, "Erro ao alterar status do chamado {ChamadoId}", id);
+                return StatusCode(500, new { message = "Erro ao alterar status do chamado.", error = ex.Message });
+            }
         }
 
         [HttpGet("estatisticas")]

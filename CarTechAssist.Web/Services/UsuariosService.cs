@@ -39,6 +39,15 @@ namespace CarTechAssist.Web.Services
             return await _apiClient.PostAsync<UsuarioDto>("api/usuarios", request, ct);
         }
 
+        /// <summary>
+        /// Criar usuário usando endpoint público (sem autenticação) - apenas para registro de clientes
+        /// </summary>
+        public async Task<UsuarioDto?> CriarPublicoAsync(CriarUsuarioRequest request, CancellationToken ct = default)
+        {
+            // Usar método PostAsyncSemAuth para requisição sem autenticação
+            return await _apiClient.PostAsyncSemAuth<UsuarioDto>("api/usuarios/registro-publico", request, ct);
+        }
+
         public async Task<UsuarioDto?> AtualizarAsync(int id, AtualizarUsuarioRequest request, CancellationToken ct = default)
         {
             return await _apiClient.PutAsync<UsuarioDto>($"api/usuarios/{id}", request, ct);

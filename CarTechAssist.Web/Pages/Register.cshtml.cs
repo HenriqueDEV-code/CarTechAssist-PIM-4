@@ -68,7 +68,8 @@ namespace CarTechAssist.Web.Pages
                 // Garantir que é cliente
                 var request = RegisterRequest with { TipoUsuarioId = 1 }; // Cliente
 
-                var resultado = await _usuariosService.CriarAsync(request, ct);
+                // CORREÇÃO: Usar endpoint público para registro de clientes
+                var resultado = await _usuariosService.CriarPublicoAsync(request, ct);
 
                 if (resultado == null)
                 {

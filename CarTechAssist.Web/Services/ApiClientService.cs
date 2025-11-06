@@ -103,6 +103,43 @@ namespace CarTechAssist.Web.Services
             return string.IsNullOrEmpty(content) ? default : JsonSerializer.Deserialize<T>(content, _jsonOptions);
         }
 
+        /// <summary>
+        /// Post sem autenticação (para endpoints públicos)
+        /// </summary>
+        public async Task<T?> PostAsyncSemAuth<T>(string endpoint, object? data = null, CancellationToken ct = default)
+        {
+            var json = data != null ? JsonSerializer.Serialize(data, _jsonOptions) : null;
+            var content = json != null ? new StringContent(json, Encoding.UTF8, "application/json") : null;
+            
+            var request = new HttpRequestMessage(HttpMethod.Post, endpoint) { Content = content };
+            // Não chamar SetHeaders - requisição sem autenticação
+            var response = await _httpClient.SendAsync(request, ct);
+            var responseContent = await response.Content.ReadAsStringAsync(ct);
+            
+            if (response.StatusCode == System.Net.HttpStatusCode.BadRequest)
+            {
+                if (!string.IsNullOrEmpty(responseContent))
+                {
+                    try
+                    {
+                        var errorObj = JsonSerializer.Deserialize<T>(responseContent, _jsonOptions);
+                        if (errorObj != null)
+                            return errorObj;
+                    }
+                    catch { }
+                }
+                await EnsureSuccessStatusCode(response);
+                return default;
+            }
+            
+            if (!response.IsSuccessStatusCode)
+            {
+                await EnsureSuccessStatusCode(response);
+            }
+            
+            return string.IsNullOrEmpty(responseContent) ? default : JsonSerializer.Deserialize<T>(responseContent, _jsonOptions);
+        }
+
         public async Task<T?> PostAsync<T>(string endpoint, object? data = null, CancellationToken ct = default)
         {
             // CORREÇÃO: Usar HttpRequestMessage para adicionar headers por requisição

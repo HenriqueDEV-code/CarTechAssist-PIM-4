@@ -53,8 +53,35 @@
                         <div class="col-md-6">
                             <p><strong>Número:</strong> @Model.Chamado.Numero</p>
                             <p><strong>Título:</strong> @Model.Chamado.Titulo</p>
-                            <p><strong>Status:</strong> 
-                                <span class="badge bg-info">@Model.GetStatusNome(Model.Chamado.StatusId)</span>
+                            <p>
+                                <strong>Status:</strong>
+                                @if (Model.IsTecnico())
+                                {
+                                    <form method="post" asp-page-handler="AlterarStatus" class="d-inline" id="formAlterarStatus">
+                                        @Html.AntiForgeryToken()
+                                        <select asp-for="NovoStatus" class="form-select form-select-sm d-inline-block" style="width: auto;" onchange="alterarStatus(this.value)">
+                                            <option value="1" selected="@(Model.Chamado.StatusId == 1)">Aberto</option>
+                                            <option value="2" selected="@(Model.Chamado.StatusId == 2)">Em Andamento</option>
+                                            <option value="3" selected="@(Model.Chamado.StatusId == 3)">Aguardando Usuário</option>
+                                            <option value="4" selected="@(Model.Chamado.StatusId == 4)">Resolvido</option>
+                                            <option value="5" selected="@(Model.Chamado.StatusId == 5)">Fechado</option>
+                                            <option value="6" selected="@(Model.Chamado.StatusId == 6)">Cancelado</option>
+                                        </select>
+                                    </form>
+                                    <script>
+                                        // Garantir que o select tenha o valor correto ao carregar
+                                        document.addEventListener('DOMContentLoaded', function() {
+                                            const selectStatus = document.querySelector('#formAlterarStatus select');
+                                            if (selectStatus) {
+                                                selectStatus.value = '@Model.Chamado.StatusId';
+                                            }
+                                        });
+                                    </script>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-info status-badge">@Model.GetStatusNome(Model.Chamado.StatusId)</span>
+                                }
                             </p>
                             <p><strong>Prioridade:</strong> 
                                 <span class="badge bg-warning">@Model.GetPrioridadeNome(Model.Chamado.PrioridadeId)</span>
@@ -97,7 +124,7 @@
                                 var tipoUsuarioNome = Model.GetTipoUsuarioNome(interacao.AutorTipoUsuarioId);
                                 var autorNome = !string.IsNullOrEmpty(interacao.AutorNome) ? interacao.AutorNome : tipoUsuarioNome;
                                 
-                                <div class="message mb-3 @(isMe ? "text-end" : "")">
+                                <div class="message mb-3 @(isMe ? "text-end" : "")" data-interacao-id="@interacao.InteracaoId">
                                     <div class="d-inline-block p-3 rounded" style="background: @(isMe ? "#4CAF50" : "#282c34"); max-width: 70%;">
                                         <div class="d-flex justify-content-between align-items-center mb-1">
                                             <small class="fw-bold">@autorNome</small>
@@ -118,10 +145,11 @@
                         }
                     </div>
 
-                    <form method="post">
+                    <form method="post" id="formMensagem" onsubmit="return enviarMensagem(event)">
+                        @Html.AntiForgeryToken()
                         <div class="input-group">
-                            <input type="text" asp-for="NovaMensagem" class="form-control" placeholder="Digite sua mensagem..." />
-                            <button type="submit" class="btn btn-primary">
+                            <input type="text" asp-for="NovaMensagem" id="inputMensagem" class="form-control" placeholder="Digite sua mensagem..." required />
+                            <button type="submit" class="btn btn-primary" id="btnEnviar">
                                 <i class="bi bi-send"></i> Enviar
                             </button>
                         </div>
@@ -194,12 +222,236 @@
 
 @section Scripts {
     <script>
+        let chamadoId = @(Model.Chamado?.ChamadoId ?? 0);
+        let ultimaInteracaoId = @(Model.Interacoes?.Any() == true ? Model.Interacoes.Max(i => i.InteracaoId) : 0);
+        let pollingAtivo = true;
+
         // Auto-scroll para a última mensagem
         document.addEventListener('DOMContentLoaded', function() {
             var chatMessages = document.querySelector('.chat-messages');
             if (chatMessages) {
                 chatMessages.scrollTop = chatMessages.scrollHeight;
             }
+            
+            // Iniciar polling para atualizar mensagens e status
+            iniciarPolling();
+        });
+
+        // Função para alterar status via AJAX
+        async function alterarStatus(novoStatus) {
+            try {
+                // Desabilitar o select durante o envio
+                const selectStatus = document.querySelector('#formAlterarStatus select');
+                if (selectStatus) {
+                    selectStatus.disabled = true;
+                }
+
+                const formData = new FormData();
+                formData.append('NovoStatus', novoStatus);
+                formData.append('__RequestVerificationToken', document.querySelector('input[name="__RequestVerificationToken"]')?.value || '');
+
+                const response = await fetch(`/Chamados/Detalhes/${chamadoId}?handler=AlterarStatus`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok || response.redirected) {
+                    // Aguardar um pouco para garantir que o status foi salvo no banco
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    // Recarregar página para mostrar novo status
+                    location.reload();
+                } else {
+                    alert('Erro ao alterar status. Tente novamente.');
+                    if (selectStatus) {
+                        selectStatus.disabled = false;
+                        // Reverter para o status anterior
+                        selectStatus.value = '@Model.Chamado.StatusId';
+                    }
+                }
+            } catch (error) {
+                console.error('Erro ao alterar status:', error);
+                alert('Erro ao alterar status. Tente novamente.');
+                const selectStatus = document.querySelector('#formAlterarStatus select');
+                if (selectStatus) {
+                    selectStatus.disabled = false;
+                    // Reverter para o status anterior
+                    selectStatus.value = '@Model.Chamado.StatusId';
+                }
+            }
+        }
+
+        // Função para enviar mensagem via AJAX
+        async function enviarMensagem(event) {
+            event.preventDefault();
+            
+            const inputMensagem = document.getElementById('inputMensagem');
+            const btnEnviar = document.getElementById('btnEnviar');
+            const mensagem = inputMensagem.value.trim();
+            
+            if (!mensagem) {
+                return false;
+            }
+
+            // Desabilitar botão durante envio
+            btnEnviar.disabled = true;
+            btnEnviar.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Enviando...';
+
+            try {
+                // Usar o formulário POST padrão do Razor Pages
+                const form = document.getElementById('formMensagem');
+                const formData = new FormData(form);
+                
+                const response = await fetch(form.action || window.location.href, {
+                    method: 'POST',
+                    body: formData,
+                    headers: {
+                        'RequestVerificationToken': document.querySelector('input[name="__RequestVerificationToken"]')?.value || ''
+                    }
+                });
+
+                if (response.ok || response.redirected) {
+                    // Aguardar um pouco para garantir que a mensagem foi salva no banco
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    // Recarregar página para mostrar nova mensagem
+                    location.reload();
+                } else {
+                    alert('Erro ao enviar mensagem. Tente novamente.');
+                }
+            } catch (error) {
+                console.error('Erro ao enviar mensagem:', error);
+                alert('Erro ao enviar mensagem. Tente novamente.');
+            } finally {
+                btnEnviar.disabled = false;
+                btnEnviar.innerHTML = '<i class="bi bi-send"></i> Enviar';
+            }
+
+            return false;
+        }
+
+        // Função para carregar mensagens via AJAX (polling)
+        async function carregarMensagens() {
+            try {
+                // Usar a página atual para verificar se há novas mensagens (mais confiável que API direta)
+                const response = await fetch(window.location.href, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'text/html'
+                    }
+                });
+                
+                if (response.ok) {
+                    const html = await response.text();
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(html, 'text/html');
+                    const novasInteracoes = doc.querySelectorAll('.message[data-interacao-id]');
+                    
+                    // Verificar se há novas mensagens comparando IDs
+                    let novaUltimaInteracaoId = 0;
+                    novasInteracoes.forEach(el => {
+                        const interacaoId = el.getAttribute('data-interacao-id');
+                        if (interacaoId) {
+                            const id = parseInt(interacaoId);
+                            if (id > novaUltimaInteracaoId) {
+                                novaUltimaInteracaoId = id;
+                            }
+                        }
+                    });
+                    
+                    if (novaUltimaInteracaoId > ultimaInteracaoId) {
+                        ultimaInteracaoId = novaUltimaInteracaoId;
+                        // Recarregar página para mostrar novas mensagens
+                        location.reload();
+                    }
+                }
+            } catch (error) {
+                console.error('Erro ao carregar mensagens:', error);
+            }
+        }
+
+        // Função para atualizar status do chamado (polling)
+        async function atualizarStatus() {
+            try {
+                const response = await fetch(window.location.href);
+                if (response.ok) {
+                    const html = await response.text();
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(html, 'text/html');
+                    const statusBadge = doc.querySelector('.status-badge');
+                    
+                    @if (!Model.IsTecnico())
+                    {
+                        <text>
+                        const currentStatusBadge = document.querySelector('.status-badge');
+                        if (currentStatusBadge && statusBadge) {
+                            const novoStatus = statusBadge.textContent.trim();
+                            if (currentStatusBadge.textContent.trim() !== novoStatus) {
+                                currentStatusBadge.textContent = novoStatus;
+                                // Mostrar notificação de mudança de status
+                                mostrarNotificacaoStatus(novoStatus);
+                            }
+                        }
+                        </text>
+                    }
+                }
+            } catch (error) {
+                console.error('Erro ao atualizar status:', error);
+            }
+        }
+
+        // Função para mostrar notificação de mudança de status
+        function mostrarNotificacaoStatus(novoStatus) {
+            // Criar notificação visual
+            const notification = document.createElement('div');
+            notification.className = 'alert alert-info alert-dismissible fade show position-fixed top-0 end-0 m-3';
+            notification.style.zIndex = '9999';
+            notification.innerHTML = `
+                <strong>Status atualizado!</strong> O status do chamado foi alterado para: <strong>${novoStatus}</strong>
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            document.body.appendChild(notification);
+            
+            // Remover após 5 segundos
+            setTimeout(() => {
+                notification.remove();
+            }, 5000);
+        }
+
+        // Função para iniciar polling
+        let pollingInterval = null;
+        function iniciarPolling() {
+            if (!pollingAtivo || chamadoId === 0) return;
+
+            // Limpar intervalo anterior se existir
+            if (pollingInterval) {
+                clearInterval(pollingInterval);
+            }
+
+            // Polling a cada 5 segundos
+            pollingInterval = setInterval(async () => {
+                if (pollingAtivo) {
+                    await carregarMensagens();
+                    await atualizarStatus();
+                }
+            }, 5000);
+        }
+
+        // Pausar polling quando estiver alterando status
+        document.addEventListener('DOMContentLoaded', function() {
+            const selectStatus = document.querySelector('#formAlterarStatus select');
+            if (selectStatus) {
+                selectStatus.addEventListener('change', function() {
+                    // Pausar polling temporariamente durante alteração de status
+                    pollingAtivo = false;
+                    if (pollingInterval) {
+                        clearInterval(pollingInterval);
+                    }
+                });
+            }
+        });
+
+        // Pausar polling quando a página não está visível
+        document.addEventListener('visibilitychange', function() {
+            pollingAtivo = !document.hidden;
         });
     </script>
 }

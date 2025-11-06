@@ -25,6 +25,8 @@ namespace CarTechAssist.Api.Middleware
                                    path.Contains("/health") || 
                                    path.Contains("/swagger") ||
                                    path.Contains("/api/setup") ||
+                                   path.Contains("/api/usuarios/registro-publico") ||
+                                   path.Contains("/api/recuperacaosenha") ||
                                    path == "/" ||
                                    path.StartsWith("/swagger");
 
