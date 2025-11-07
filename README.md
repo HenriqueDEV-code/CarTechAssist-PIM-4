@@ -182,7 +182,7 @@ CarTechAssist/
 ### 1. Clone o repositório
 
 ```bash
-git clone <url-do-repositorio>
+git clone <https://github.com/HenriqueDEV-code/CarTechAssist-PIM-4.git>
 cd CarTechAssist
 ```
 
