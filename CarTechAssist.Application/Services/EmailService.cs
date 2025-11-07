@@ -16,8 +16,7 @@ namespace CarTechAssist.Application.Services
         public EmailService(IConfiguration configuration, ILogger<EmailService> logger)
         {
             _logger = logger;
-            
-            // Configuração via appsettings.json
+
             _smtpServer = configuration["Email:SmtpServer"] ?? "smtp.gmail.com";
             _smtpPort = int.Parse(configuration["Email:SmtpPort"] ?? "587");
             _smtpUser = configuration["Email:SmtpUser"] ?? throw new InvalidOperationException("Email:SmtpUser não configurado no appsettings.json");
@@ -45,7 +44,6 @@ namespace CarTechAssist.Application.Services
                 _logger.LogInformation("🔵 App Password (primeiros 4 chars): {PrimeirosChars}...", 
                     _smtpPass.Length >= 4 ? _smtpPass.Substring(0, 4) : "****");
 
-                // Validar email do destinatário
                 if (string.IsNullOrWhiteSpace(destinatario) || !destinatario.Contains("@"))
                 {
                     var erro = $"Email destinatário inválido: {destinatario}";
@@ -53,7 +51,6 @@ namespace CarTechAssist.Application.Services
                     return (false, erro);
                 }
 
-                // Configurar SMTP Client
                 using var smtpClient = new SmtpClient(_smtpServer, _smtpPort)
                 {
                     EnableSsl = true,

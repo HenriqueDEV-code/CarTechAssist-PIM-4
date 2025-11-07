@@ -31,7 +31,7 @@ namespace CarTechAssist.Web.Pages
             int page = 1,
             CancellationToken ct = default)
         {
-            // Verificar autenticação
+
             var token = HttpContext.Session.GetString("Token");
             if (string.IsNullOrEmpty(token))
             {
@@ -61,7 +61,7 @@ namespace CarTechAssist.Web.Pages
 
             try
             {
-                // Se for Cliente, filtrar apenas seus chamados
+
                 int? solicitanteUsuarioId = tipoUsuarioId == 1 ? UsuarioId : null;
 
                 _logger.LogInformation("Carregando chamados. TenantId: {TenantId}, UsuarioId: {UsuarioId}, TipoUsuarioId: {TipoUsuarioId}, StatusId: {StatusId}, SolicitanteUsuarioId: {SolicitanteUsuarioId}",
@@ -81,8 +81,7 @@ namespace CarTechAssist.Web.Pages
                 _logger.LogError(httpEx, "Erro HTTP ao carregar chamados. StatusCode: {StatusCode}, Message: {Message}",
                     httpEx.Data.Contains("StatusCode") ? httpEx.Data["StatusCode"] : "Desconhecido",
                     httpEx.Data.Contains("Message") ? httpEx.Data["Message"] : httpEx.Message);
-                
-                // Verificar se é erro de autenticação
+
                 if (httpEx.Data.Contains("StatusCode") && httpEx.Data["StatusCode"] is System.Net.HttpStatusCode statusCode)
                 {
                     if (statusCode == System.Net.HttpStatusCode.Unauthorized)

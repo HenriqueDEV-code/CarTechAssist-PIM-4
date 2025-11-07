@@ -3,6 +3,7 @@ using CarTechAssist.Contracts.Usuarios;
 using CarTechAssist.Web.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using System.Linq;
 
 namespace CarTechAssist.Web.Pages
 {
@@ -101,8 +102,12 @@ namespace CarTechAssist.Web.Pages
                 return RedirectToPage("/Dashboard");
             }
 
+            _logger.LogInformation("🔍 OnPostAsync - Iniciando criação de usuário. ModelState.IsValid: {IsValid}", ModelState.IsValid);
+            
             if (!ModelState.IsValid)
             {
+                _logger.LogWarning("❌ OnPostAsync - ModelState inválido. Erros: {Errors}", 
+                    string.Join(", ", ModelState.SelectMany(x => x.Value.Errors).Select(e => e.ErrorMessage)));
                 await OnGetAsync(ct: ct);
                 MostrarFormulario = true;
                 return Page();
@@ -110,6 +115,7 @@ namespace CarTechAssist.Web.Pages
 
             try
             {
+                _logger.LogInformation("🔍 OnPostAsync - ModelState válido, prosseguindo com validações manuais");
                 // Validar campos obrigatórios antes de enviar
                 if (string.IsNullOrWhiteSpace(NovoUsuario.Login))
                 {
@@ -139,14 +145,30 @@ namespace CarTechAssist.Web.Pages
                     return await OnGetAsync(ct: ct);
                 }
                 
-                _logger.LogInformation("Enviando requisição para criar usuário. Login: {Login}, TipoUsuarioId: {TipoUsuarioId}", 
-                    NovoUsuario.Login, NovoUsuario.TipoUsuarioId);
+                // Normalizar campos: converter strings vazias em null
+                var emailNormalizado = string.IsNullOrWhiteSpace(NovoUsuario.Email) ? null : NovoUsuario.Email.Trim();
+                var telefoneNormalizado = string.IsNullOrWhiteSpace(NovoUsuario.Telefone) ? null : NovoUsuario.Telefone.Trim();
+
+                var requestNormalizado = new CriarUsuarioRequest(
+                    Login: NovoUsuario.Login.Trim(),
+                    NomeCompleto: NovoUsuario.NomeCompleto.Trim(),
+                    Email: emailNormalizado,
+                    Telefone: telefoneNormalizado,
+                    TipoUsuarioId: NovoUsuario.TipoUsuarioId,
+                    Senha: NovoUsuario.Senha
+                );
+
+                _logger.LogInformation("🔍 OnPostAsync - Enviando requisição para criar usuário. Login: {Login}, TipoUsuarioId: {TipoUsuarioId}, Email: {Email}, Senha: {HasSenha}", 
+                    requestNormalizado.Login, requestNormalizado.TipoUsuarioId, requestNormalizado.Email, !string.IsNullOrEmpty(requestNormalizado.Senha));
                 
-                var resultado = await _usuariosService.CriarAsync(NovoUsuario, ct);
+                var resultado = await _usuariosService.CriarAsync(requestNormalizado, ct);
                 
-                if (resultado != null)
+                _logger.LogInformation("🔍 OnPostAsync - Resposta da API recebida. Resultado: {Resultado}", 
+                    resultado != null ? $"UsuarioId={resultado.UsuarioId}, Login={resultado.Login}" : "NULL");
+                
+                if (resultado != null && resultado.UsuarioId > 0)
                 {
-                    _logger.LogInformation("Usuário criado com sucesso. UsuarioId: {UsuarioId}, Login: {Login}", 
+                    _logger.LogInformation("✅ Usuário criado com sucesso. UsuarioId: {UsuarioId}, Login: {Login}", 
                         resultado.UsuarioId, resultado.Login);
                     
                     SuccessMessage = $"Usuário '{resultado.NomeCompleto}' criado com sucesso!";
@@ -159,11 +181,13 @@ namespace CarTechAssist.Web.Pages
                         Senha: string.Empty
                     );
                     ModelState.Clear();
+                    MostrarFormulario = false;
                 }
                 else
                 {
-                    _logger.LogWarning("API retornou null ao criar usuário");
-                    ErrorMessage = "Erro ao criar usuário. A API não retornou dados.";
+                    _logger.LogWarning("❌ API retornou null ou UsuarioId inválido ao criar usuário. Resultado: {Resultado}", 
+                        resultado != null ? $"UsuarioId={resultado.UsuarioId}" : "NULL");
+                    ErrorMessage = "Erro ao criar usuário. A API não retornou dados válidos.";
                     MostrarFormulario = true;
                 }
             }

@@ -5,11 +5,11 @@ using CarTechAssist.Domain.Interfaces;
 
 namespace CarTechAssist.Api.Controllers
 {
-    /// <summary>
-    /// Controller temporário para configuração inicial do sistema.
-    /// Permite criar o primeiro usuário admin sem autenticação.
-    /// REMOVER EM PRODUÇÃO ou proteger com validação adicional.
-    /// </summary>
+
+
+
+
+
     [ApiController]
     [Route("api/[controller]")]
     public class SetupController : ControllerBase
@@ -28,10 +28,9 @@ namespace CarTechAssist.Api.Controllers
             _logger = logger;
         }
 
-        /// <summary>
-        /// Cria o primeiro usuário admin do sistema.
-        /// Este endpoint deve ser removido ou protegido em produção.
-        /// </summary>
+
+
+
         [HttpPost("criar-admin")]
         public async Task<IActionResult> CriarAdmin(
             [FromBody] CriarAdminRequest request,
@@ -39,8 +38,8 @@ namespace CarTechAssist.Api.Controllers
         {
             try
             {
-                // Verificar se já existe algum admin
-                // Por segurança, vamos verificar se já existe usuário ativo
+
+
                 var tenantId = request.TenantId > 0 ? request.TenantId : 1; // Default tenant 1
 
                 var criarRequest = new CriarUsuarioRequest(
@@ -82,9 +81,8 @@ namespace CarTechAssist.Api.Controllers
             }
         }
 
-        /// <summary>
-        /// Define senha para um usuário existente pelo login (para usuários criados via SQL sem senha).
-        /// </summary>
+
+
         [HttpPost("definir-senha-admin")]
         public async Task<IActionResult> DefinirSenhaAdmin(
             [FromBody] DefinirSenhaRequest request,
@@ -96,7 +94,6 @@ namespace CarTechAssist.Api.Controllers
                 var login = request.Login ?? "admin";
                 var novaSenha = request.NovaSenha ?? "Admin@123";
 
-                // Buscar usuário pelo login
                 var usuario = await _usuariosRepository.ObterPorLoginAsync(tenantId, login, ct);
                 if (usuario == null)
                 {
@@ -106,7 +103,6 @@ namespace CarTechAssist.Api.Controllers
                     });
                 }
 
-                // Resetar senha usando o service
                 await _usuariosService.ResetSenhaPorLoginAsync(tenantId, login, novaSenha, ct);
 
                 _logger.LogWarning("⚠️ ATENÇÃO: Senha do usuário admin foi redefinida via endpoint de setup. Remova este endpoint em produção!");

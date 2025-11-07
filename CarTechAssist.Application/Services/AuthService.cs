@@ -34,8 +34,7 @@ namespace CarTechAssist.Application.Services
         public async Task<LoginResponse?> AutenticarAsync(LoginRequest request, CancellationToken ct)
         {
             _logger.LogInformation("Tentativa de login. Tenant: {TenantId}, Login: {Login}", request.TenantId, request.Login);
-            
-            // Buscar usuário por login
+
             var usuario = await _usuariosRepository.ObterPorLoginAsync(request.TenantId, request.Login, ct);
             if (usuario == null || !usuario.Ativo || usuario.Excluido)
             {
@@ -44,7 +43,6 @@ namespace CarTechAssist.Application.Services
                 return null;
             }
 
-            // Verificar senha
             if (usuario.HashSenha == null || usuario.SaltSenha == null)
             {
                 _logger.LogWarning("Usuário sem senha configurada. UsuarioId: {UsuarioId}, Login: {Login}. Use o endpoint /api/Setup/definir-senha-admin para definir a senha.", 
@@ -60,11 +58,9 @@ namespace CarTechAssist.Application.Services
 
             _logger.LogInformation("Login bem-sucedido. UsuarioId: {UsuarioId}, Login: {Login}", usuario.UsuarioId, usuario.Login);
 
-            // Gerar tokens
             var token = GerarJwtToken(usuario);
             var refreshTokenString = GerarRefreshToken();
-            
-            // Salvar refresh token no banco
+
             var refreshTokenExpirationDays = int.Parse(_configuration["Jwt:RefreshTokenExpirationDays"] ?? "7");
             var refreshToken = new RefreshToken
             {
@@ -93,7 +89,6 @@ namespace CarTechAssist.Application.Services
                 _configuration["Jwt:SecretKey"] ?? throw new InvalidOperationException("JWT SecretKey não configurada")));
             var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
-            // Garantir que o TipoUsuarioId seja convertido para byte (número) e não para string do enum
             var tipoUsuarioIdNumero = ((byte)usuario.TipoUsuarioId).ToString();
             
             _logger.LogDebug("Gerando JWT token. TipoUsuarioId (enum): {TipoUsuarioId}, TipoUsuarioId (número): {TipoUsuarioIdNumero}", 
@@ -171,8 +166,7 @@ namespace CarTechAssist.Application.Services
         public async Task<LoginResponse?> RenovarTokenAsync(string refreshToken, CancellationToken ct)
         {
             _logger.LogInformation("Tentativa de renovação de token com refresh token");
-            
-            // Validar refresh token no banco
+
             var storedToken = await _refreshTokenRepository.ObterPorTokenAsync(refreshToken, ct);
             if (storedToken == null)
             {
@@ -180,7 +174,6 @@ namespace CarTechAssist.Application.Services
                 return null;
             }
 
-            // Buscar usuário
             var usuario = await _usuariosRepository.ObterPorIdAsync(storedToken.UsuarioId, ct);
             if (usuario == null || !usuario.Ativo || usuario.Excluido)
             {
@@ -189,10 +182,8 @@ namespace CarTechAssist.Application.Services
                 return null;
             }
 
-            // Revogar token antigo (rotação de tokens)
             await _refreshTokenRepository.RevogarAsync(storedToken.RefreshTokenId, ct);
 
-            // Gerar novos tokens
             var newToken = GerarJwtToken(usuario);
             var newRefreshTokenString = GerarRefreshToken();
             

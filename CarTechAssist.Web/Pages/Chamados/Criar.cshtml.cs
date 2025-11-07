@@ -68,7 +68,6 @@ namespace CarTechAssist.Web.Pages.Chamados
             }
             UsuarioId = usuarioId;
 
-            // Obter tipo de usuário da sessão
             var tipoUsuarioIdStr = HttpContext.Session.GetString("TipoUsuarioId");
             if (byte.TryParse(tipoUsuarioIdStr, out var tipoUsuarioId))
             {
@@ -79,24 +78,21 @@ namespace CarTechAssist.Web.Pages.Chamados
                 TipoUsuarioId = 1; // Padrão: Cliente
             }
 
-            // Se for Cliente, auto-completar com ele mesmo
             if (TipoUsuarioId == 1) // Cliente
             {
                 ChamadoRequest = ChamadoRequest with { SolicitanteUsuarioId = usuarioId };
             }
             else
             {
-                // Se for Técnico ou Admin, carregar lista de usuários para seleção
+
                 try
                 {
                     var usuariosResult = await _usuariosService.ListarAsync(tipo: null, ativo: true, page: 1, pageSize: 1000, ct);
                     Usuarios = usuariosResult?.Items;
-                    
-                    // Carregar técnicos para ResponsavelUsuarioId
+
                     var tecnicosResult = await _usuariosService.ListarAsync(tipo: 2, ativo: true, page: 1, pageSize: 1000, ct);
                     Tecnicos = tecnicosResult?.Items;
-                    
-                    // Auto-completar ResponsavelUsuarioId com o técnico logado
+
                     if (TipoUsuarioId == 2 || TipoUsuarioId == 3) // Técnico ou Admin
                     {
                         ChamadoRequest = ChamadoRequest with { ResponsavelUsuarioId = usuarioId };
@@ -134,7 +130,6 @@ namespace CarTechAssist.Web.Pages.Chamados
                 return RedirectToPage("/Login");
             }
 
-            // CORREÇÃO: Validar campos obrigatórios antes de enviar
             if (string.IsNullOrWhiteSpace(ChamadoRequest.Titulo))
             {
                 ModelState.AddModelError(nameof(ChamadoRequest.Titulo), "Título é obrigatório.");
@@ -171,7 +166,6 @@ namespace CarTechAssist.Web.Pages.Chamados
                 return Page();
             }
 
-            // Obter tipo de usuário
             var tipoUsuarioIdStr = HttpContext.Session.GetString("TipoUsuarioId");
             byte tipoUsuarioId = 1;
             if (byte.TryParse(tipoUsuarioIdStr, out var tipo))
@@ -179,18 +173,16 @@ namespace CarTechAssist.Web.Pages.Chamados
                 tipoUsuarioId = tipo;
             }
 
-            // Se for Cliente, garantir que o solicitante é ele mesmo
             if (tipoUsuarioId == 1)
             {
                 ChamadoRequest = ChamadoRequest with { SolicitanteUsuarioId = usuarioId };
             }
-            // Se for Técnico/Admin e não selecionou solicitante, usar ele mesmo
+
             else if (ChamadoRequest.SolicitanteUsuarioId <= 0)
             {
                 ChamadoRequest = ChamadoRequest with { SolicitanteUsuarioId = usuarioId };
             }
 
-            // Se for Técnico/Admin e não selecionou responsável, usar ele mesmo
             if ((tipoUsuarioId == 2 || tipoUsuarioId == 3) && !ChamadoRequest.ResponsavelUsuarioId.HasValue)
             {
                 ChamadoRequest = ChamadoRequest with { ResponsavelUsuarioId = usuarioId };
@@ -212,8 +204,7 @@ namespace CarTechAssist.Web.Pages.Chamados
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Erro ao criar chamado");
-                
-                // CORREÇÃO: Mensagens de erro mais específicas
+
                 if (ex.Message.Contains("Categoria") || ex.Message.Contains("categoria"))
                 {
                     ErrorMessage = "Categoria inválida ou não encontrada. Por favor, selecione uma categoria válida.";

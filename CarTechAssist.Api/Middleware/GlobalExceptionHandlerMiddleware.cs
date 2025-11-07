@@ -100,7 +100,6 @@ namespace CarTechAssist.Api.Middleware
                 Instance = context.Request.Path
             };
 
-            // Adicionar traceId se disponível
             if (!string.IsNullOrEmpty(traceId))
             {
                 problemDetails.Extensions["traceId"] = traceId;

@@ -7,10 +7,10 @@ using System.Net.Http;
 
 namespace CarTechAssist.Application.Services
 {
-    /// <summary>
-    /// Serviço para integração com OpenRouter API
-    /// OpenRouter é um gateway unificado para múltiplos modelos de IA (OpenAI, Anthropic, etc.)
-    /// </summary>
+
+
+
+
     public class OpenRouterService : IAiProvider
     {
         private readonly IConfiguration _configuration;
@@ -46,7 +46,7 @@ namespace CarTechAssist.Application.Services
                         _httpClient = httpClientFactory.CreateClient();
                         _httpClient.BaseAddress = new Uri("https://openrouter.ai/api/v1/");
                         _httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {_apiKey}");
-                        // OpenRouter requer header HTTP-Referer ou X-Title para identificar a aplicação
+
                         _httpClient.DefaultRequestHeaders.Add("HTTP-Referer", _configuration["OpenRouter:HttpReferer"] ?? "https://cartechassist.local");
                         _httpClient.DefaultRequestHeaders.Add("X-Title", "CarTechAssist");
                         _httpClient.Timeout = TimeSpan.FromSeconds(30);
@@ -77,7 +77,6 @@ namespace CarTechAssist.Application.Services
             {
                 _logger.LogInformation("Enviando prompt para OpenRouter. Model: {Model}, PromptLength: {Length}", _model, prompt.Length);
 
-                // Prompt otimizado para ajudar clientes e criar chamados quando necessário
                 var systemPrompt = @"Você é um assistente técnico especializado do CarTechAssist, focado em ajudar clientes com problemas técnicos.
 
 SUA PRINCIPAL FUNÇÃO:
@@ -126,12 +125,11 @@ SEMPRE termine sua resposta oferecendo criar um chamado se detectar necessidade 
 
                 _logger.LogInformation("OpenRouter respondeu. Model: {Model}, Tokens: {Tokens}", _model, usage?.total_tokens ?? 0);
 
-                // Calcular custo se disponível (OpenRouter retorna informações de custo)
                 decimal? custoUsd = null;
                 if (result.usage?.prompt_tokens.HasValue == true && result.usage?.completion_tokens.HasValue == true)
                 {
-                    // OpenRouter pode retornar custo na resposta, mas por enquanto deixamos null
-                    // Pode ser calculado baseado no modelo usado se necessário
+
+
                 }
 
                 return (

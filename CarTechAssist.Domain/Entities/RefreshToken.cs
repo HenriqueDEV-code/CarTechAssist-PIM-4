@@ -12,7 +12,6 @@ namespace CarTechAssist.Domain.Entities
         public string? IpAddress { get; set; }
         public string? UserAgent { get; set; }
 
-        // Navigation property
         public Usuario? Usuario { get; set; }
     }
 }

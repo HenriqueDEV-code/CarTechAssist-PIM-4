@@ -50,7 +50,6 @@ namespace CarTechAssist.Application.Services
             var (items, total) = await _chamadosRepository.ListaAsync(
                 tenantId, statusId, responsavelUsuarioId, solicitanteUsuarioId, page, pageSize, ct);
 
-            // CORREÇÃO: Incluir nomes legíveis dos enums e informações adicionais
             var ticketViews = items.Select(c => new TicketView(
                 c.ChamadoId,
                 c.Numero,
@@ -81,18 +80,15 @@ namespace CarTechAssist.Application.Services
             var chamado = await _chamadosRepository.ObterAsync(chamadoId, ct);
             if (chamado == null) return null;
 
-            // Validar tenant
             if (chamado.TenantId != tenantId)
                 throw new UnauthorizedAccessException("Chamado não pertence ao tenant informado.");
 
-            // Validar permissões: Cliente só pode ver seus próprios chamados
             if (tipoUsuarioId == 1 && usuarioId.HasValue)
             {
                 if (chamado.SolicitanteUsuarioId != usuarioId.Value)
                     throw new UnauthorizedAccessException("Você não tem permissão para visualizar este chamado.");
             }
 
-            // CORREÇÃO: Incluir nomes legíveis
             return new ChamadoDetailDto(
                 chamado.ChamadoId,
                 chamado.Numero,
@@ -117,11 +113,10 @@ namespace CarTechAssist.Application.Services
             CriarChamadoRequest request,
             CancellationToken ct)
         {
-            // Log detalhado para debug
+
             _logger.LogInformation("Iniciando criação de chamado. TenantId: {TenantId}, SolicitanteUsuarioId: {SolicitanteUsuarioId}, ResponsavelUsuarioId: {ResponsavelUsuarioId}",
                 tenantId, request.SolicitanteUsuarioId, request.ResponsavelUsuarioId?.ToString() ?? "null");
 
-            // Validar solicitante existe e pertence ao tenant
             var solicitante = await _usuariosRepository.ObterPorIdAsync(request.SolicitanteUsuarioId, ct);
             if (solicitante == null)
             {
@@ -145,7 +140,6 @@ namespace CarTechAssist.Application.Services
                 throw new ArgumentException($"Usuário solicitante {request.SolicitanteUsuarioId} está inativo ou excluído.");
             }
 
-            // Validar responsável se fornecido
             if (request.ResponsavelUsuarioId.HasValue)
             {
                 var responsavel = await _usuariosRepository.ObterPorIdAsync(request.ResponsavelUsuarioId.Value, ct);
@@ -161,7 +155,7 @@ namespace CarTechAssist.Application.Services
                 {
                     throw new ArgumentException($"Usuário responsável {request.ResponsavelUsuarioId.Value} está inativo ou excluído.");
                 }
-                // Responsável deve ser técnico ou admin
+
                 if (responsavel.TipoUsuarioId != Domain.Enums.TipoUsuarios.Tecnico && 
                     responsavel.TipoUsuarioId != Domain.Enums.TipoUsuarios.Administrador)
                 {
@@ -173,12 +167,10 @@ namespace CarTechAssist.Application.Services
             {
                 _logger.LogInformation("Chamando repository para criar chamado. TenantId: {TenantId}, SolicitanteUsuarioId: {SolicitanteUsuarioId}",
                     tenantId, request.SolicitanteUsuarioId);
-                
-                // CORREÇÃO CRÍTICA: Sanitizar entrada para prevenir XSS
+
                 var tituloSanitizado = _inputSanitizer?.Sanitize(request.Titulo) ?? request.Titulo;
                 var descricaoSanitizada = _inputSanitizer?.Sanitize(request.Descricao) ?? request.Descricao; // Descricao agora é obrigatório, não precisa ?? string.Empty
-                
-                // Calcular SLA baseado na prioridade se não foi fornecido
+
                 var slaEstimadoFim = request.SLA_EstimadoFim ?? CalcularSLAEstimado(request.PrioridadeId);
                 
                 var chamado = await _chamadosRepository.CriarAsync(
@@ -196,7 +188,6 @@ namespace CarTechAssist.Application.Services
                 _logger.LogInformation("✅ Chamado criado com sucesso no repository! ChamadoId: {ChamadoId}, Numero: {Numero}, SLA_EstimadoFim: {SLA}",
                     chamado.ChamadoId, chamado.Numero, slaEstimadoFim);
 
-                // CORREÇÃO: Incluir nomes legíveis e informações completas
                 return new ChamadoDetailDto(
                     chamado.ChamadoId,
                     chamado.Numero,
@@ -247,9 +238,8 @@ namespace CarTechAssist.Application.Services
             CancellationToken ct)
         {
             var interacoes = await _chamadosRepository.ListarInteracoesAsync(chamadoId, tenantId, ct);
-            
-            // Retornar interações com nome do tipo de usuário como identificação
-            // O nome completo do autor será buscado no frontend se necessário
+
+
             return interacoes.Select(i => new InteracaoDto(
                 i.InteracaoId,
                 i.ChamadoId,
@@ -288,13 +278,12 @@ namespace CarTechAssist.Application.Services
             AdicionarInteracaoRequest request,
             CancellationToken ct)
         {
-            // CORREÇÃO CRÍTICA: Sanitizar mensagem para prevenir XSS
+
             var mensagemSanitizada = _inputSanitizer?.SanitizePreservingLineBreaks(request.Mensagem) ?? request.Mensagem;
             
             var chamado = await _chamadosRepository.AdicionarInteracaoAsync(
                 chamadoId, tenantId, usuarioId, mensagemSanitizada, ct);
 
-            // CORREÇÃO: Incluir nomes legíveis
             return new ChamadoDetailDto(
                 chamado.ChamadoId,
                 chamado.Numero,
@@ -324,7 +313,6 @@ namespace CarTechAssist.Application.Services
             var chamado = await _chamadosRepository.AlterarStatusAsync(
                 chamadoId, tenantId, request.NovoStatus, usuarioId, ct);
 
-            // CORREÇÃO: Incluir nomes legíveis
             return new ChamadoDetailDto(
                 chamado.ChamadoId,
                 chamado.Numero,
@@ -361,7 +349,6 @@ namespace CarTechAssist.Application.Services
                 chamadoId, tenantId, modelo, mensagem, confianca, resumoRaciocinio,
                 provedor, inputTokens, outputTokens, custoUsd, ct);
 
-            // CORREÇÃO: Incluir nomes legíveis
             return new ChamadoDetailDto(
                 chamado.ChamadoId,
                 chamado.Numero,
@@ -390,27 +377,24 @@ namespace CarTechAssist.Application.Services
             byte[] bytes,
             CancellationToken ct)
         {
-            // Validações de arquivo
+
             var maxFileSizeBytes = long.Parse(_configuration["FileUpload:MaxFileSizeBytes"] ?? "10485760"); // 10MB padrão
             var allowedExtensions = (_configuration["FileUpload:AllowedExtensions"] ?? ".pdf,.doc,.docx,.jpg,.jpeg,.png,.gif,.txt")
                 .Split(',', StringSplitOptions.RemoveEmptyEntries)
                 .Select(e => e.Trim().ToLowerInvariant())
                 .ToHashSet();
 
-            // Validar tamanho
             if (bytes.Length > maxFileSizeBytes)
             {
                 throw new ArgumentException($"Arquivo muito grande. Tamanho máximo permitido: {maxFileSizeBytes / 1024 / 1024}MB");
             }
 
-            // Validar extensão
             var extension = Path.GetExtension(nomeArquivo)?.ToLowerInvariant();
             if (string.IsNullOrEmpty(extension) || !allowedExtensions.Contains(extension))
             {
                 throw new ArgumentException($"Tipo de arquivo não permitido. Extensões permitidas: {string.Join(", ", allowedExtensions)}");
             }
 
-            // Calcular hash do conteúdo
             using var sha256 = System.Security.Cryptography.SHA256.Create();
             var hash = sha256.ComputeHash(bytes);
 
@@ -448,7 +432,6 @@ namespace CarTechAssist.Application.Services
             var (total, abertos, emAndamento, resolvidos, cancelados) = 
                 await _chamadosRepository.ObterEstatisticasAsync(tenantId, solicitanteUsuarioId, ct);
 
-            // Obter estatísticas por prioridade
             var (_, _, _, _, _, porUrgenciaAlta, porUrgenciaMedia, porUrgenciaBaixa) = 
                 await ObterEstatisticasPorPrioridadeAsync(tenantId, solicitanteUsuarioId, ct);
 
@@ -469,7 +452,7 @@ namespace CarTechAssist.Application.Services
             int? solicitanteUsuarioId,
             CancellationToken ct)
         {
-            // Buscar todos os chamados para calcular por prioridade
+
             var (chamados, _) = await _chamadosRepository.ListaAsync(
                 tenantId, 
                 null, 
@@ -494,12 +477,11 @@ namespace CarTechAssist.Application.Services
             string? comentario,
             CancellationToken ct)
         {
-            // Validar chamado existe
+
             var chamado = await _chamadosRepository.ObterAsync(chamadoId, ct);
             if (chamado == null || chamado.TenantId != tenantId)
                 throw new ArgumentException("Chamado não encontrado.");
 
-            // Converter DTO para enum domain
             var scoreEnum = (IAFeedbackScore)(byte)score;
 
             await _feedbackRepository.AdicionarAsync(
@@ -512,9 +494,8 @@ namespace CarTechAssist.Application.Services
                 ct);
         }
 
-        /// <summary>
-        /// Calcula a data/hora estimada de conclusão do chamado baseado na prioridade
-        /// </summary>
+
+
         private static DateTime CalcularSLAEstimado(byte prioridadeId)
         {
             var agora = DateTime.UtcNow;

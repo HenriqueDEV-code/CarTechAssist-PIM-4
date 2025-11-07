@@ -23,7 +23,7 @@ namespace CarTechAssist.Web.Pages
 
         public void OnGet()
         {
-            // Se já estiver logado, redirecionar para dashboard
+
             var token = HttpContext.Session.GetString("Token");
             if (!string.IsNullOrEmpty(token))
             {
@@ -40,7 +40,7 @@ namespace CarTechAssist.Web.Pages
 
             try
             {
-                // Define TenantId automaticamente: querystring tem prioridade, senão usa 1 (padrão)
+
                 var tenantFromQuery = HttpContext.Request.Query["tenant"].FirstOrDefault();
                 if (int.TryParse(tenantFromQuery, out var tenantIdFromQuery))
                 {
@@ -59,7 +59,6 @@ namespace CarTechAssist.Web.Pages
                     return Page();
                 }
 
-                // Salvar informações na sessão
                 HttpContext.Session.SetString("Token", response.Token);
                 HttpContext.Session.SetString("RefreshToken", response.RefreshToken);
                 HttpContext.Session.SetString("UsuarioId", response.UsuarioId.ToString());
@@ -72,8 +71,7 @@ namespace CarTechAssist.Web.Pages
             catch (HttpRequestException ex)
             {
                 _logger.LogError(ex, "Erro ao fazer login: {Message}", ex.Message);
-                
-                // Mensagens mais específicas baseadas no tipo de erro
+
                 if (ex.InnerException is TaskCanceledException || ex.Message.Contains("timeout"))
                 {
                     ErrorMessage = "Tempo de conexão esgotado. Verifique se a API está em execução.";

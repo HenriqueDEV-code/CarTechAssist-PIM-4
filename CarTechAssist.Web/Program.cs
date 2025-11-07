@@ -21,7 +21,7 @@ builder.Services.AddHttpContextAccessor();
 // HttpClient configuration com suporte a certificados self-signed em desenvolvimento
 if (builder.Environment.IsDevelopment())
 {
-    builder.Services.AddHttpClient<ApiClientService>()
+    builder.Services.AddHttpClient<CarTechAssist.Web.Services.ApiClientService>()
         .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
         {
             ServerCertificateCustomValidationCallback = 
@@ -30,15 +30,15 @@ if (builder.Environment.IsDevelopment())
 }
 else
 {
-builder.Services.AddHttpClient<ApiClientService>();
+builder.Services.AddHttpClient<CarTechAssist.Web.Services.ApiClientService>();
 }
 
 // Services
-builder.Services.AddScoped<ApiClientService>();
-builder.Services.AddScoped<AuthService>();
-builder.Services.AddScoped<ChamadosService>();
-builder.Services.AddScoped<UsuariosService>();
-builder.Services.AddScoped<CategoriasService>();
+builder.Services.AddScoped<CarTechAssist.Web.Services.ApiClientService>();
+builder.Services.AddScoped<CarTechAssist.Web.Services.AuthService>();
+builder.Services.AddScoped<CarTechAssist.Web.Services.ChamadosService>();
+builder.Services.AddScoped<CarTechAssist.Web.Services.UsuariosService>();
+builder.Services.AddScoped<CarTechAssist.Web.Services.CategoriasService>();
 
 var app = builder.Build();
 

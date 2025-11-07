@@ -21,17 +21,16 @@ namespace CarTechAssist.Api.Controllers
             _chamadosService = chamadosService;
         }
 
-        /// <summary>
-        /// CORREÇÃO: Obter TenantId com validação e correspondência com JWT
-        /// Retorna o TenantId do header ou do JWT, lançando exceção apenas se realmente necessário
-        /// </summary>
+
+
+
         private int GetTenantId()
         {
-            // Tentar obter do header primeiro
+
             var tenantIdHeader = Request.Headers["X-Tenant-Id"].FirstOrDefault();
             if (!string.IsNullOrEmpty(tenantIdHeader) && int.TryParse(tenantIdHeader, out var tenantId) && tenantId > 0)
             {
-                // Se autenticado, validar correspondência com JWT
+
                 if (User?.Identity?.IsAuthenticated == true)
                 {
                     var jwtTenantId = User.FindFirst("TenantId")?.Value;
@@ -46,7 +45,6 @@ namespace CarTechAssist.Api.Controllers
                 return tenantId;
             }
 
-            // Se não tem no header, tentar obter do JWT
             if (User?.Identity?.IsAuthenticated == true)
             {
                 var jwtTenantId = User.FindFirst("TenantId")?.Value;
@@ -56,21 +54,19 @@ namespace CarTechAssist.Api.Controllers
                 }
             }
 
-            // Se não encontrou em lugar nenhum, lançar exceção
             throw new UnauthorizedAccessException("TenantId não encontrado no header X-Tenant-Id ou no token JWT. Faça login primeiro ou forneça o header X-Tenant-Id.");
         }
 
-        /// <summary>
-        /// CORREÇÃO: Obter UsuarioId com validação e correspondência com JWT
-        /// Retorna o UsuarioId do header ou do JWT, lançando exceção apenas se realmente necessário
-        /// </summary>
+
+
+
         private int GetUsuarioId()
         {
-            // Tentar obter do header primeiro
+
             var usuarioIdHeader = Request.Headers["X-Usuario-Id"].FirstOrDefault();
             if (!string.IsNullOrEmpty(usuarioIdHeader) && int.TryParse(usuarioIdHeader, out var usuarioId) && usuarioId > 0)
             {
-                // Se autenticado, validar correspondência com JWT
+
                 if (User?.Identity?.IsAuthenticated == true)
                 {
                     var jwtUsuarioId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
@@ -85,7 +81,6 @@ namespace CarTechAssist.Api.Controllers
                 return usuarioId;
             }
 
-            // Se não tem no header, tentar obter do JWT
             if (User?.Identity?.IsAuthenticated == true)
             {
                 var jwtUsuarioId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
@@ -95,7 +90,6 @@ namespace CarTechAssist.Api.Controllers
                 }
             }
 
-            // Se não encontrou em lugar nenhum, lançar exceção
             throw new UnauthorizedAccessException("UsuarioId não encontrado no header X-Usuario-Id ou no token JWT. Faça login primeiro ou forneça o header X-Usuario-Id.");
         }
 
@@ -109,7 +103,7 @@ namespace CarTechAssist.Api.Controllers
             [FromQuery] int pageSize = 20,
             CancellationToken ct = default)
         {
-            // CORREÇÃO CRÍTICA: Validação de pageSize para prevenir DoS
+
             const int maxPageSize = 100;
             if (pageSize > maxPageSize)
                 pageSize = maxPageSize;
@@ -122,11 +116,10 @@ namespace CarTechAssist.Api.Controllers
             {
                 var tenantId = GetTenantId();
 
-                // Se for Cliente (TipoUsuarioId = 1), filtrar apenas seus próprios chamados
                 var tipoUsuarioIdStr = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value;
                 if (byte.TryParse(tipoUsuarioIdStr, out var tipoUsuarioId) && tipoUsuarioId == 1)
                 {
-                    // Cliente só pode ver seus próprios chamados
+
                     solicitanteUsuarioId = GetUsuarioId();
                 }
 
@@ -136,7 +129,7 @@ namespace CarTechAssist.Api.Controllers
             }
             catch (Exception ex)
             {
-                // Log do erro para debug
+
                 var logger = HttpContext.RequestServices.GetRequiredService<ILogger<ChamadosController>>();
                 logger.LogError(ex, "Erro ao listar chamados. TenantId: {TenantId}, StatusId: {StatusId}, SolicitanteUsuarioId: {SolicitanteUsuarioId}",
                     GetTenantId(), statusId, solicitanteUsuarioId);
@@ -187,11 +180,10 @@ namespace CarTechAssist.Api.Controllers
         {
             try
             {
-                // Garantir que o SolicitanteUsuarioId seja sempre o usuário autenticado
+
                 var usuarioIdAutenticado = GetUsuarioId();
                 var tenantId = GetTenantId();
-                
-                // Criar novo request com SolicitanteUsuarioId corrigido
+
                 var requestCorrigido = new CriarChamadoRequest(
                     Titulo: request.Titulo,
                     Descricao: request.Descricao,
@@ -317,7 +309,7 @@ namespace CarTechAssist.Api.Controllers
         {
             try
             {
-                // Verificar se o usuário é técnico (TipoUsuarioId = 2 ou 3)
+
                 var tipoUsuarioIdStr = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value;
                 if (!byte.TryParse(tipoUsuarioIdStr, out var tipoUsuarioId) || (tipoUsuarioId != 2 && tipoUsuarioId != 3))
                 {
@@ -339,7 +331,7 @@ namespace CarTechAssist.Api.Controllers
         [HttpGet("estatisticas")]
         public async Task<ActionResult<EstatisticasChamadosDto>> ObterEstatisticas(CancellationToken ct = default)
         {
-            // Se for Cliente (TipoUsuarioId = 1), filtrar apenas seus próprios chamados
+
             var tipoUsuarioIdStr = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value;
             int? solicitanteUsuarioId = null;
             

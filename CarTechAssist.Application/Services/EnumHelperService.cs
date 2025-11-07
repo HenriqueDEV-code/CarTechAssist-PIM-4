@@ -2,9 +2,9 @@ using CarTechAssist.Domain.Enums;
 
 namespace CarTechAssist.Application.Services
 {
-    /// <summary>
-    /// Serviço auxiliar para converter IDs de enums em nomes legíveis
-    /// </summary>
+
+
+
     public class EnumHelperService
     {
         public static string GetStatusNome(StatusChamado statusId)

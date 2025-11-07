@@ -26,7 +26,7 @@ namespace CarTechAssist.Api.Controllers
         {
             try
             {
-                // Validar dados de entrada
+
                 if (string.IsNullOrWhiteSpace(request.Login))
                 {
                     return BadRequest(new { 
@@ -45,7 +45,6 @@ namespace CarTechAssist.Api.Controllers
                     });
                 }
 
-                // TenantId padrão é 1 para recuperação pública
                 var tenantId = 1;
 
                 _logger.LogInformation("Solicitação de recuperação recebida. Login: {Login}, Email: {Email}", 
@@ -57,19 +56,18 @@ namespace CarTechAssist.Api.Controllers
                     request.Email.Trim(),
                     ct);
 
-                // Só retorna sucesso se o código foi gerado e enviado
                 return Ok(new
                 {
                     message = "Código de recuperação enviado com sucesso! Verifique sua caixa de entrada e spam.",
                     success = true,
                     emailEnviado = resultado.EmailEnviado,
-                    // DEBUG: Mostrar código apenas em desenvolvimento (se email não foi enviado)
+
                     codigo = resultado.EmailEnviado ? null : resultado.Codigo
                 });
             }
             catch (ArgumentException ex)
             {
-                // Erro de validação de argumentos
+
                 _logger.LogWarning("Erro de validação na recuperação de senha: {Erro}", ex.Message);
                 return BadRequest(new { 
                     message = ex.Message,
@@ -79,16 +77,15 @@ namespace CarTechAssist.Api.Controllers
             }
             catch (InvalidOperationException ex)
             {
-                // Captura exceção quando email não corresponde, usuário não encontrado, etc.
+
                 _logger.LogError("🚫🚫🚫 VALIDAÇÃO FALHOU NO CONTROLLER - Erro na recuperação de senha: {Erro}", ex.Message);
                 _logger.LogError("Stack trace: {StackTrace}", ex.StackTrace);
-                
-                // CORREÇÃO DE SEGURANÇA: Não retornar a mensagem da exceção diretamente (pode conter email)
-                // Verificar se a mensagem contém informações sensíveis e sanitizar
+
+
                 string mensagemSegura;
                 if (ex.Message.Contains("email cadastrado para o login") || ex.Message.Contains("é:"))
                 {
-                    // Se a mensagem contém email exposto, usar mensagem genérica
+
                     if (ex.Message.Contains("não corresponde"))
                     {
                         mensagemSegura = "O email informado não corresponde ao cadastrado.";
@@ -104,11 +101,10 @@ namespace CarTechAssist.Api.Controllers
                 }
                 else
                 {
-                    // Se não contém informações sensíveis, usar a mensagem original
+
                     mensagemSegura = ex.Message;
                 }
-                
-                // Retornar BadRequest com mensagem sanitizada
+
                 return BadRequest(new { 
                     message = mensagemSegura,
                     success = false,
@@ -118,7 +114,7 @@ namespace CarTechAssist.Api.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Erro inesperado ao solicitar recuperação de senha. Detalhes: {Erro}", ex.Message);
-                // Por segurança, não revelar detalhes do erro, mas também não retornar sucesso falso
+
                 return StatusCode(500, new { 
                     message = "Ocorreu um erro ao processar sua solicitação. Tente novamente mais tarde.",
                     success = false,

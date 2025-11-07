@@ -3,9 +3,9 @@ using System.Text.Json;
 
 namespace CarTechAssist.Api.Middleware
 {
-    /// <summary>
-    /// CORREÇÃO CRÍTICA: Middleware de validação de tenant com validação de formato e correspondência com JWT
-    /// </summary>
+
+
+
     public class TenantMiddleware
     {
         private readonly RequestDelegate _next;
@@ -30,14 +30,12 @@ namespace CarTechAssist.Api.Middleware
                                    path == "/" ||
                                    path.StartsWith("/swagger");
 
-            // CORREÇÃO: Para endpoints públicos, não validar headers
             if (isPublicEndpoint)
             {
                 await _next(context);
                 return;
             }
 
-            // CORREÇÃO: Tentar extrair TenantId do JWT se não estiver no header
             if (!context.Request.Headers.ContainsKey("X-Tenant-Id"))
             {
                 var tenantIdClaim = context.User?.FindFirst("TenantId")?.Value;
@@ -47,7 +45,6 @@ namespace CarTechAssist.Api.Middleware
                 }
             }
 
-            // CORREÇÃO: Tentar extrair UsuarioId do JWT se não estiver no header
             if (!context.Request.Headers.ContainsKey("X-Usuario-Id"))
             {
                 var usuarioIdClaim = context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
@@ -57,7 +54,6 @@ namespace CarTechAssist.Api.Middleware
                 }
             }
 
-            // CORREÇÃO: Validar TenantId apenas se presente (não bloquear se ausente para endpoints autenticados)
             var tenantIdHeader = context.Request.Headers["X-Tenant-Id"].FirstOrDefault();
             if (!string.IsNullOrEmpty(tenantIdHeader))
             {
@@ -69,7 +65,6 @@ namespace CarTechAssist.Api.Middleware
                     return;
                 }
 
-                // CORREÇÃO: Validar se corresponde ao JWT apenas se autenticado
                 if (context.User?.Identity?.IsAuthenticated == true)
                 {
                     var jwtTenantId = context.User.FindFirst("TenantId")?.Value;
@@ -86,9 +81,8 @@ namespace CarTechAssist.Api.Middleware
                     }
                 }
             }
-            // CORREÇÃO: Se não tem TenantId e não está autenticado, não bloquear (deixar o controller/autorização tratar)
 
-            // CORREÇÃO: Validar formato do UsuarioId apenas se presente (já foi extraído acima se necessário)
+
             var usuarioIdHeader = context.Request.Headers["X-Usuario-Id"].FirstOrDefault();
             if (!string.IsNullOrEmpty(usuarioIdHeader))
             {
@@ -100,7 +94,6 @@ namespace CarTechAssist.Api.Middleware
                     return;
                 }
 
-                // Validar se corresponde ao JWT apenas se autenticado
                 if (context.User?.Identity?.IsAuthenticated == true)
                 {
                     var jwtUsuarioId = context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;

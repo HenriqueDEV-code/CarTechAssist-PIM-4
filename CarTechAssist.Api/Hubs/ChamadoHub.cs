@@ -5,9 +5,9 @@ using System.Security.Claims;
 
 namespace CarTechAssist.Api.Hubs
 {
-    /// <summary>
-    /// Hub SignalR para chat em tempo real nos chamados
-    /// </summary>
+
+
+
     [Authorize]
     public class ChamadoHub : Hub
     {
@@ -38,9 +38,8 @@ namespace CarTechAssist.Api.Hubs
             await base.OnDisconnectedAsync(exception);
         }
 
-        /// <summary>
-        /// Entrar em um grupo de chamado específico
-        /// </summary>
+
+
         public async Task EntrarChamado(long chamadoId)
         {
             var userId = Context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
@@ -52,7 +51,6 @@ namespace CarTechAssist.Api.Hubs
             _logger.LogInformation("Usuário {UserId} entrou no grupo do chamado {ChamadoId}. Grupo: {Grupo}",
                 userId, chamadoId, grupo);
 
-            // Notificar outros no grupo
             await Clients.OthersInGroup(grupo).SendAsync("UsuarioConectado", new
             {
                 UsuarioId = userId,
@@ -60,9 +58,8 @@ namespace CarTechAssist.Api.Hubs
             });
         }
 
-        /// <summary>
-        /// Sair de um grupo de chamado
-        /// </summary>
+
+
         public async Task SairChamado(long chamadoId)
         {
             var userId = Context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
@@ -81,9 +78,8 @@ namespace CarTechAssist.Api.Hubs
             });
         }
 
-        /// <summary>
-        /// Enviar mensagem em tempo real no chat do chamado
-        /// </summary>
+
+
         public async Task EnviarMensagem(long chamadoId, string mensagem)
         {
             var userId = Context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
@@ -94,7 +90,6 @@ namespace CarTechAssist.Api.Hubs
             _logger.LogInformation("Mensagem enviada no chat. ChamadoId: {ChamadoId}, UsuarioId: {UsuarioId}, Grupo: {Grupo}",
                 chamadoId, userId, grupo);
 
-            // Broadcast para todos no grupo
             await Clients.Group(grupo).SendAsync("NovaMensagem", new
             {
                 ChamadoId = chamadoId,
@@ -105,9 +100,8 @@ namespace CarTechAssist.Api.Hubs
             });
         }
 
-        /// <summary>
-        /// Notificar que alguém está digitando
-        /// </summary>
+
+
         public async Task UsuarioDigitando(long chamadoId, bool digitando)
         {
             var userId = Context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;

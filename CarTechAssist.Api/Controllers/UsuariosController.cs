@@ -6,7 +6,9 @@ using CarTechAssist.Contracts.Common;
 using CarTechAssist.Contracts.Usuarios;
 using CarTechAssist.Api.Attributes;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.DependencyInjection;
+using System.IO;
+using System.Text;
+using System.Linq;
 
 namespace CarTechAssist.Api.Controllers
 {
@@ -31,7 +33,6 @@ namespace CarTechAssist.Api.Controllers
                 throw new UnauthorizedAccessException("TenantId não encontrado ou inválido no header X-Tenant-Id.");
             }
 
-            // Validar se corresponde ao JWT
             if (User?.Identity?.IsAuthenticated == true)
             {
                 var jwtTenantId = User.FindFirst("TenantId")?.Value;
@@ -73,7 +74,7 @@ namespace CarTechAssist.Api.Controllers
         [HttpGet("{id:int}")]
         public async Task<ActionResult<UsuarioDto>> Obter(int id, CancellationToken ct = default)
         {
-            // CORREÇÃO CRÍTICA: Passar tenantId para validação de multi-tenancy
+
             var result = await _usuariosService.ObterAsync(GetTenantId(), id, ct);
             if (result == null) return NotFound();
             return Ok(result);
@@ -82,149 +83,167 @@ namespace CarTechAssist.Api.Controllers
         [HttpPost]
         [AuthorizeRoles(3)] // Apenas Admin(3) pode criar usuários
         public async Task<ActionResult<UsuarioDto>> Criar(
-            [FromBody] CriarUsuarioRequest request,
+            [FromBody] CriarUsuarioRequest? request,
             CancellationToken ct = default)
         {
             var logger = HttpContext.RequestServices.GetRequiredService<ILogger<UsuariosController>>();
+
+            logger.LogWarning("🔍 CRIAR USUARIO - Autenticado: {IsAuthenticated}, User: {User}, Claims: {Claims}",
+                User?.Identity?.IsAuthenticated,
+                User?.Identity?.Name,
+                string.Join(", ", User?.Claims?.Select(c => $"{c.Type}={c.Value}") ?? Array.Empty<string>()));
             
             try
             {
-                logger.LogInformation("🔴 CONTROLLER: Recebida requisição para criar usuário. Login: {Login}, TipoUsuarioId: {TipoUsuarioId}",
-                    request.Login, request.TipoUsuarioId);
+
+                Request.EnableBuffering();
+                Request.Body.Position = 0;
+                using var reader = new StreamReader(Request.Body, Encoding.UTF8, leaveOpen: true);
+                var bodyContent = await reader.ReadToEndAsync();
+                Request.Body.Position = 0;
                 
-                var tenantId = GetTenantId();
-                logger.LogInformation("🔴 CONTROLLER: TenantId obtido: {TenantId}", tenantId);
-                
-                // Validar campos obrigatórios
+                logger.LogWarning("🔍 CRIAR USUARIO - Body recebido: {Body}", bodyContent);
+                logger.LogWarning("🔍 CRIAR USUARIO - Request deserializado: Login={Login}, TipoUsuarioId={TipoUsuarioId}", 
+                    request?.Login, request?.TipoUsuarioId);
+                logger.LogWarning("🔍 CRIAR USUARIO - Headers: X-Tenant-Id={TenantId}, Authorization={HasAuth}",
+                    Request.Headers["X-Tenant-Id"].FirstOrDefault(),
+                    Request.Headers.ContainsKey("Authorization"));
+
+                if (request == null)
+                {
+                    logger.LogError("❌ CRIAR USUARIO - Request é NULL! Body: {Body}", bodyContent);
+                    return BadRequest(new { message = "Dados inválidos. Request não pode ser nulo.", body = bodyContent });
+                }
+
                 if (string.IsNullOrWhiteSpace(request.Login))
                 {
-                    logger.LogWarning("⚠️ Login vazio ou nulo");
                     return BadRequest(new { message = "Login é obrigatório." });
                 }
-                
+
                 if (string.IsNullOrWhiteSpace(request.NomeCompleto))
                 {
-                    logger.LogWarning("⚠️ NomeCompleto vazio ou nulo");
                     return BadRequest(new { message = "Nome completo é obrigatório." });
                 }
-                
+
                 if (string.IsNullOrWhiteSpace(request.Senha))
                 {
-                    logger.LogWarning("⚠️ Senha vazia ou nula");
                     return BadRequest(new { message = "Senha é obrigatória." });
                 }
-                
+
                 if (request.Senha.Length < 6)
                 {
-                    logger.LogWarning("⚠️ Senha muito curta: {Length} caracteres", request.Senha.Length);
                     return BadRequest(new { message = "A senha deve ter no mínimo 6 caracteres." });
                 }
-                
-                // Validar que é Agente(2) ou Admin(3)
+
                 if (request.TipoUsuarioId != 2 && request.TipoUsuarioId != 3)
                 {
-                    logger.LogWarning("⚠️ TipoUsuarioId inválido: {TipoUsuarioId}. Esperado: 2 ou 3", request.TipoUsuarioId);
+                    logger.LogWarning("❌ CRIAR USUARIO - TipoUsuarioId inválido: {TipoUsuarioId}", request.TipoUsuarioId);
                     return BadRequest(new { message = "Apenas Agente(2) e Admin(3) podem ser criados aqui." });
                 }
+
+                var tenantId = GetTenantId();
+                logger.LogWarning("🔍 CRIAR USUARIO - TenantId obtido: {TenantId}", tenantId);
                 
-                logger.LogInformation("🔴 CONTROLLER: Validações passadas. Chamando service...");
                 var result = await _usuariosService.CriarAsync(tenantId, request, ct);
                 
-                logger.LogInformation("🎉 CONTROLLER: Usuário criado com sucesso! UsuarioId: {UsuarioId}, Login: {Login}", 
-                    result.UsuarioId, result.Login);
+                logger.LogWarning("✅ CRIAR USUARIO - Usuário criado com sucesso. UsuarioId: {UsuarioId}", result.UsuarioId);
                 
                 return CreatedAtAction(nameof(Obter), new { id = result.UsuarioId }, result);
-            }
-            catch (InvalidOperationException ex)
-            {
-                logger.LogError(ex, "Erro ao criar usuário: {Message}", ex.Message);
-                return BadRequest(new { message = ex.Message });
             }
             catch (UnauthorizedAccessException ex)
             {
-                logger.LogError(ex, "Erro de autorização ao criar usuário: {Message}", ex.Message);
-                return Unauthorized(new { message = ex.Message });
+                logger.LogError("❌ CRIAR USUARIO - Erro de autorização: {Message}", ex.Message);
+                return StatusCode(403, new { message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                logger.LogError("❌ CRIAR USUARIO - Erro de operação: {Message}", ex.Message);
+                return BadRequest(new { message = ex.Message });
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Erro inesperado ao criar usuário: {Message}, StackTrace: {StackTrace}", 
-                    ex.Message, ex.StackTrace);
-                return StatusCode(500, new { message = "Erro ao criar usuário. Tente novamente." });
+                logger.LogError(ex, "❌ CRIAR USUARIO - Erro inesperado: {Message}, StackTrace: {StackTrace}", ex.Message, ex.StackTrace);
+                return StatusCode(500, new { message = "Erro ao criar usuário. Tente novamente.", error = ex.Message });
             }
         }
 
-        /// <summary>
-        /// Endpoint público para registro de clientes (sem autenticação)
-        /// </summary>
+
+
         [HttpPost("registro-publico")]
         [Microsoft.AspNetCore.Authorization.AllowAnonymous]
         public async Task<ActionResult<UsuarioDto>> RegistroPublico(
-            [FromBody] CriarUsuarioRequest request,
+            [FromBody] CriarUsuarioRequest? request,
             CancellationToken ct = default)
         {
             var logger = HttpContext.RequestServices.GetRequiredService<ILogger<UsuariosController>>();
             
             try
             {
-                logger.LogInformation("🔴 CONTROLLER (PUBLICO): Recebida requisição de registro público. Login: {Login}, Email: {Email}, TipoUsuarioId: {TipoUsuarioId}", 
-                    request.Login, request.Email, request.TipoUsuarioId);
+
+                Request.EnableBuffering();
+                Request.Body.Position = 0;
+                using var reader = new StreamReader(Request.Body, Encoding.UTF8, leaveOpen: true);
+                var bodyContent = await reader.ReadToEndAsync();
+                Request.Body.Position = 0;
                 
-                // Validar que é apenas para clientes
+                logger.LogWarning("🔍 REGISTRO PUBLICO - Body recebido: {Body}", bodyContent);
+                logger.LogWarning("🔍 REGISTRO PUBLICO - Request deserializado: Login={Login}, Email={Email}, TipoUsuarioId={TipoUsuarioId}", 
+                    request?.Login, request?.Email, request?.TipoUsuarioId);
+
+                if (request == null)
+                {
+                    logger.LogError("❌ REGISTRO PUBLICO - Request é NULL! Body: {Body}", bodyContent);
+                    return BadRequest(new { message = "Dados inválidos. Request não pode ser nulo.", body = bodyContent });
+                }
+
                 if (request.TipoUsuarioId != 1)
                 {
-                    logger.LogWarning("⚠️ Tentativa de criar usuário não-cliente via endpoint público. TipoUsuarioId: {TipoUsuarioId}", 
-                        request.TipoUsuarioId);
                     return BadRequest(new { message = "Este endpoint é apenas para registro de clientes." });
                 }
 
-                // Validar campos obrigatórios
                 if (string.IsNullOrWhiteSpace(request.Login))
                 {
-                    logger.LogWarning("⚠️ Login vazio ou nulo");
                     return BadRequest(new { message = "Login é obrigatório." });
                 }
-                
+
                 if (string.IsNullOrWhiteSpace(request.NomeCompleto))
                 {
-                    logger.LogWarning("⚠️ NomeCompleto vazio ou nulo");
                     return BadRequest(new { message = "Nome completo é obrigatório." });
                 }
-                
+
+                if (string.IsNullOrWhiteSpace(request.Email))
+                {
+                    return BadRequest(new { message = "Email é obrigatório para clientes." });
+                }
+
                 if (string.IsNullOrWhiteSpace(request.Senha))
                 {
-                    logger.LogWarning("⚠️ Senha vazia ou nula");
                     return BadRequest(new { message = "Senha é obrigatória." });
                 }
-                
+
                 if (request.Senha.Length < 6)
                 {
-                    logger.LogWarning("⚠️ Senha muito curta: {Length} caracteres", request.Senha.Length);
                     return BadRequest(new { message = "A senha deve ter no mínimo 6 caracteres." });
                 }
 
-                // TenantId padrão para registro público
                 var tenantId = 1;
 
-                logger.LogInformation("🔴 CONTROLLER (PUBLICO): Validações passadas. TenantId: {TenantId}, Login: {Login}. Chamando service...", 
-                    tenantId, request.Login);
-                
                 var result = await _usuariosService.CriarAsync(tenantId, request, ct);
-                
-                logger.LogInformation("🎉 CONTROLLER (PUBLICO): Cliente criado com sucesso! UsuarioId: {UsuarioId}, Login: {Login}", 
-                    result.UsuarioId, result.Login);
+
+                if (result == null || result.UsuarioId <= 0)
+                {
+                    return StatusCode(500, new { message = "Erro ao criar conta. Usuário não foi criado corretamente." });
+                }
                 
                 return CreatedAtAction(nameof(Obter), new { id = result.UsuarioId }, result);
             }
             catch (InvalidOperationException ex)
             {
-                logger.LogError(ex, "Erro de validação ao criar cliente: {Message}", ex.Message);
-                return BadRequest(new { message = ex.Message });
+                return BadRequest(new { message = ex.Message, error = ex.InnerException?.Message });
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Erro inesperado ao criar cliente: {Message}, StackTrace: {StackTrace}", 
-                    ex.Message, ex.StackTrace);
-                return StatusCode(500, new { message = "Erro ao criar conta. Tente novamente." });
+                return StatusCode(500, new { message = "Erro ao criar conta. Tente novamente.", error = ex.Message, innerError = ex.InnerException?.Message });
             }
         }
 

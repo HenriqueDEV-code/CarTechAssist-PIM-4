@@ -16,7 +16,7 @@ namespace CarTechAssist.Infrastruture.Repositories
 
         public async Task<Chamado?> ObterAsync(long chamadoId, CancellationToken ct)
         {
-            // CORREÇÃO: Removido filtro Excluido = 0 (a view pode já filtrar isso ou não ter essa coluna)
+
             const string sql = @"
                 SELECT * FROM core.vw_chamados 
                 WHERE ChamadoId = @chamadoId";
@@ -34,22 +34,20 @@ namespace CarTechAssist.Infrastruture.Repositories
             int pageSize,
             CancellationToken ct)
         {
-            
-            // Agora usa SQL parametrizado com condições NULL-safe
+
             var offset = (page - 1) * pageSize;
 
             var parameters = new DynamicParameters();
             parameters.Add("tenantId", tenantId);
             parameters.Add("offset", offset);
             parameters.Add("pageSize", pageSize);
-            // CORREÇÃO: Dapper converte null automaticamente para DBNull.Value - não precisa converter manualmente
+
             parameters.Add("statusId", statusId);
-            // CORREÇÃO CRÍTICA: Corrigido nome do parâmetro (estava 'responsaveUsuarioId' sem 'l')
+
             parameters.Add("responsavelUsuarioId", responsavelUsuarioId);
             parameters.Add("solicitanteUsuarioId", solicitanteUsuarioId);
 
-            // SQL completamente parametrizado - sem concatenação de strings
-            // CORREÇÃO: Removido filtro Excluido = 0 (a view pode já filtrar isso ou não ter essa coluna)
+
             const string sql = @"
                 SELECT * FROM core.vw_chamados 
                 WHERE TenantId = @tenantId 
@@ -86,7 +84,7 @@ namespace CarTechAssist.Infrastruture.Repositories
             DateTime? slaEstimadoFim,
             CancellationToken ct)
         {
-            // CORREÇÃO: A stored procedure agora aceita o parâmetro SLA_EstimadoFim
+
             const string sql = @"
                 EXEC core.usp_Chamado_Criar
                     @TenantId = @tenantId,
@@ -102,18 +100,17 @@ namespace CarTechAssist.Infrastruture.Repositories
             var parameters = new DynamicParameters();
             parameters.Add("tenantId", tenantId);
             parameters.Add("titulo", titulo);
-            // CORREÇÃO: Dapper converte null automaticamente para DBNull.Value - não precisa converter manualmente
+
             parameters.Add("descricao", descricao);
             parameters.Add("categoriaId", categoriaId);
             parameters.Add("prioridadeId", prioridadeId);
             parameters.Add("canalId", canalId);
             parameters.Add("solicitanteUsuarioId", solicitanteUsuarioId);
-            // CORREÇÃO CRÍTICA: Dapper trata null automaticamente - não usar DBNull.Value explicitamente
+
             parameters.Add("responsavelUsuarioId", responsavelUsuarioId);
-            // CORREÇÃO: A stored procedure agora aceita SLA_EstimadoFim diretamente
+
             parameters.Add("slaEstimadoFim", slaEstimadoFim);
 
-            // Criar o chamado (a stored procedure já insere o SLA)
             return await _db.QueryFirstAsync<Chamado>(
                 new CommandDefinition(sql, parameters, cancellationToken: ct));
         }
@@ -149,7 +146,7 @@ namespace CarTechAssist.Infrastruture.Repositories
             parameters.Add("tenantId", tenantId);
             parameters.Add("modelo", modelo);
             parameters.Add("mensagem", mensagem);
-            // CORREÇÃO: Dapper converte null automaticamente para DBNull.Value
+
             parameters.Add("confianca", confianca);
             parameters.Add("resumoRaciocinio", resumoRaciocinio);
             parameters.Add("provedor", provedor);
@@ -263,14 +260,13 @@ namespace CarTechAssist.Infrastruture.Repositories
             int? solicitanteUsuarioId,
             CancellationToken ct)
         {
-            // CORREÇÃO CRÍTICA: Removida construção dinâmica de SQL para prevenir SQL Injection
+
             var parameters = new DynamicParameters();
             parameters.Add("tenantId", tenantId);
-            // CORREÇÃO: Dapper converte null automaticamente para DBNull.Value
+
             parameters.Add("solicitanteUsuarioId", solicitanteUsuarioId);
 
-            // SQL completamente parametrizado
-            // CORREÇÃO: Removido filtro Excluido = 0 (a view pode já filtrar isso ou não ter essa coluna)
+
             const string sql = @"
                 SELECT 
                     COUNT(*) as Total,

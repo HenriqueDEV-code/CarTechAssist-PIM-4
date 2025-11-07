@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -17,7 +17,7 @@ namespace CarTechAssist.Domain.Entities
         public CanalAtendimento CanalId { get; set; }
         public string? Mensagem { get; set; }
         public bool Interna { get; set; }
-        // IA
+
         public bool IA_Gerada { get; set; }
         public string? IA_Modelo { get; set; }
         public decimal? IA_Confianca { get; set; }

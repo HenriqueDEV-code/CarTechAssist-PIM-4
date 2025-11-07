@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -10,11 +10,8 @@ namespace CarTechAssist.Domain.Interfaces
     public interface IChamadosRepository
     {
 
-        // SELECT * FROM core.vw_chamados WHERE id_chamado = @id_chamado
         Task<Chamado?> ObterAsync(long chamadoId, CancellationToken ct);
 
-
-        // SELECT paginando da vw para listagens
         Task<(IReadOnlyList<Chamado> Items, int Total)> ListaAsync(
               int tenantId, 
               byte? statusId,
@@ -25,7 +22,6 @@ namespace CarTechAssist.Domain.Interfaces
               CancellationToken ct
             );
 
-        // EXEC core.usp_Chamado_Criar ... -> retorna registro da vw
 
         Task<Chamado> CriarAsync(
               int tenantId,
@@ -40,7 +36,6 @@ namespace CarTechAssist.Domain.Interfaces
               CancellationToken ct
             );
 
-        // EXEC core.usp_Chamado_IA_AdicionarInteracao
         Task<Chamado> AdicionarInteracaoIaAsync(
             long chamadoId,
             int tenantId,
@@ -55,7 +50,6 @@ namespace CarTechAssist.Domain.Interfaces
             CancellationToken ct
             );
 
-        // EXEC core.usp_Chamado_AdicionarInteracao
         Task<Chamado> AdicionarInteracaoAsync(
             long chamadoId,
             int tenantId,
@@ -63,13 +57,11 @@ namespace CarTechAssist.Domain.Interfaces
             string mensagem,
             CancellationToken ct);
 
-        // SELECT interações de um chamado
         Task<IReadOnlyList<ChamadoInteracao>> ListarInteracoesAsync(
             long chamadoId,
             int tenantId,
             CancellationToken ct);
 
-        // EXEC core.usp_Chamado_AlterarStatus
         Task<Chamado> AlterarStatusAsync(
             long chamadoId,
             int tenantId,
@@ -77,7 +69,6 @@ namespace CarTechAssist.Domain.Interfaces
             int usuarioId,
             CancellationToken ct);
 
-        // EXEC core.usp_Chamado_AdicionarAnexo
         Task AdicionarAnexoAsync(
             long chamadoId,
             int tenantId,
@@ -87,7 +78,6 @@ namespace CarTechAssist.Domain.Interfaces
             int usuarioId,
             CancellationToken ct);
 
-        // Estatísticas de chamados
         Task<(int Total, int Abertos, int EmAndamento, int Resolvidos, int Cancelados)> ObterEstatisticasAsync(
             int tenantId,
             int? solicitanteUsuarioId,

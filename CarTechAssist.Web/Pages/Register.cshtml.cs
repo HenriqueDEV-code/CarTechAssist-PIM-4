@@ -34,7 +34,7 @@ namespace CarTechAssist.Web.Pages
 
         public void OnGet()
         {
-            // Se já estiver logado, redirecionar para dashboard
+
             var token = HttpContext.Session.GetString("Token");
             if (!string.IsNullOrEmpty(token))
             {
@@ -49,14 +49,12 @@ namespace CarTechAssist.Web.Pages
                 return Page();
             }
 
-            // Validar confirmação de senha
             if (RegisterRequest.Senha != ConfirmarSenha)
             {
                 ErrorMessage = "As senhas não coincidem.";
                 return Page();
             }
 
-            // Validar senha mínima
             if (RegisterRequest.Senha.Length < 6)
             {
                 ErrorMessage = "A senha deve ter no mínimo 6 caracteres.";
@@ -65,13 +63,28 @@ namespace CarTechAssist.Web.Pages
 
             try
             {
-                // Garantir que é cliente
-                var request = RegisterRequest with { TipoUsuarioId = 1 }; // Cliente
+
+                if (string.IsNullOrWhiteSpace(RegisterRequest.Email))
+                {
+                    ErrorMessage = "Email é obrigatório.";
+                    return Page();
+                }
+
+                var emailNormalizado = string.IsNullOrWhiteSpace(RegisterRequest.Email) ? null : RegisterRequest.Email.Trim();
+                var telefoneNormalizado = string.IsNullOrWhiteSpace(RegisterRequest.Telefone) ? null : RegisterRequest.Telefone.Trim();
+
+                var request = new CriarUsuarioRequest(
+                    Login: RegisterRequest.Login.Trim(),
+                    NomeCompleto: RegisterRequest.NomeCompleto.Trim(),
+                    Email: emailNormalizado,
+                    Telefone: telefoneNormalizado,
+                    TipoUsuarioId: 1, // Cliente
+                    Senha: RegisterRequest.Senha
+                );
 
                 _logger.LogInformation("Tentando criar conta de cliente. Login: {Login}, Email: {Email}", 
                     request.Login, request.Email);
 
-                // CORREÇÃO: Usar endpoint público para registro de clientes
                 var resultado = await _usuariosService.CriarPublicoAsync(request, ct);
 
                 if (resultado == null)
@@ -96,7 +109,6 @@ namespace CarTechAssist.Web.Pages
                 );
                 ConfirmarSenha = string.Empty;
 
-                // Aguardar um pouco para mostrar mensagem de sucesso
                 await Task.Delay(2000);
 
                 return RedirectToPage("/Login");

@@ -32,16 +32,16 @@ namespace CarTechAssist.Application.Services
                     var jsonCredentials = _configuration["Dialogflow:JsonCredentials"];
                     if (!string.IsNullOrEmpty(jsonCredentials))
                     {
-                        // Se for base64, decodificar; caso contrário, tratar como caminho de arquivo
+
                         byte[] credentialsBytes;
                         try
                         {
-                            // Tentar decodificar como base64
+
                             credentialsBytes = Convert.FromBase64String(jsonCredentials);
                         }
                         catch
                         {
-                            // Se falhar, tratar como caminho de arquivo
+
                             if (File.Exists(jsonCredentials))
                             {
                                 credentialsBytes = File.ReadAllBytes(jsonCredentials);
@@ -53,11 +53,9 @@ namespace CarTechAssist.Application.Services
                             }
                         }
 
-                        // Criar arquivo temporário com as credenciais
                         var tempFile = Path.GetTempFileName();
                         File.WriteAllBytes(tempFile, credentialsBytes);
 
-                        // Configurar variável de ambiente para Google Cloud
                         System.Environment.SetEnvironmentVariable("GOOGLE_APPLICATION_CREDENTIALS", tempFile);
 
                         _sessionsClient = SessionsClient.Create();
@@ -88,7 +86,7 @@ namespace CarTechAssist.Application.Services
 
             try
             {
-                // Criar session ID único baseado no tenant/usuário ou usar um genérico
+
                 var sessionId = $"session_{Guid.NewGuid():N}";
                 var session = new SessionName(_projectId, sessionId);
 

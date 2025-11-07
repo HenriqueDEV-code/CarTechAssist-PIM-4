@@ -173,14 +173,13 @@
 @section Scripts {
     @{await Html.RenderPartialAsync("_ValidationScriptsPartial");}
     <script>
-        // CORREÇÃO: Validação client-side adicional para garantir campos obrigatórios
+
         document.addEventListener('DOMContentLoaded', function() {
             const form = document.getElementById('formCriarChamado');
             const categoriaSelect = document.querySelector('select[name="ChamadoRequest.CategoriaId"]');
             const prioridadeSelect = document.querySelector('select[name="ChamadoRequest.PrioridadeId"]');
             const slaEstimadoInput = document.getElementById('slaEstimado');
-            
-            // Função para calcular SLA baseado na prioridade
+
             function calcularSLA(prioridadeId) {
                 const agora = new Date();
                 let horas = 48; // Padrão: Média
@@ -193,8 +192,7 @@
                 }
                 
                 const dataEstimada = new Date(agora.getTime() + (horas * 60 * 60 * 1000));
-                
-                // Formatar para exibição: YYYY-MM-DD HH:mm:ss.mmm
+
                 const ano = dataEstimada.getUTCFullYear();
                 const mes = String(dataEstimada.getUTCMonth() + 1).padStart(2, '0');
                 const dia = String(dataEstimada.getUTCDate()).padStart(2, '0');
@@ -205,8 +203,7 @@
                 
                 return `${ano}-${mes}-${dia} ${hora}:${minuto}:${segundo}.${milissegundo}`;
             }
-            
-            // Atualizar SLA quando prioridade mudar
+
             if (prioridadeSelect && slaEstimadoInput) {
                 function atualizarSLA() {
                     slaEstimadoInput.value = calcularSLA(prioridadeSelect.value);
@@ -218,7 +215,7 @@
             
             if (form) {
                 form.addEventListener('submit', function(e) {
-                    // Validar categoria
+
                     if (categoriaSelect && (categoriaSelect.value === '' || categoriaSelect.value === '0')) {
                         e.preventDefault();
                         categoriaSelect.classList.add('is-invalid');
@@ -234,8 +231,7 @@
                         categoriaSelect.focus();
                         return false;
                     }
-                    
-                    // Validar descrição
+
                     const descricao = document.querySelector('textarea[name="ChamadoRequest.Descricao"]');
                     if (descricao && !descricao.value.trim()) {
                         e.preventDefault();
@@ -243,11 +239,10 @@
                         descricao.focus();
                         return false;
                     }
-                    
-                    // Validar solicitante se for técnico/admin
+
                     const solicitanteSelect = document.querySelector('select[name="ChamadoRequest.SolicitanteUsuarioId"]');
                     if (solicitanteSelect && solicitanteSelect.offsetParent !== null) {
-                        // Campo está visível (técnico/admin)
+
                         if (solicitanteSelect.value === '' || solicitanteSelect.value === '0') {
                             e.preventDefault();
                             solicitanteSelect.classList.add('is-invalid');
@@ -256,8 +251,7 @@
                         }
                     }
                 });
-                
-                // Remover classe de erro quando usuário selecionar categoria
+
                 if (categoriaSelect) {
                     categoriaSelect.addEventListener('change', function() {
                         if (this.value && this.value !== '0') {

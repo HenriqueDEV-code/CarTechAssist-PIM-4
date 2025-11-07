@@ -32,7 +32,7 @@ namespace CarTechAssist.Web.Pages
 
         public void OnGet()
         {
-            // Se já estiver logado, redirecionar para dashboard
+
             var token = HttpContext.Session.GetString("Token");
             if (!string.IsNullOrEmpty(token))
             {
@@ -61,7 +61,7 @@ namespace CarTechAssist.Web.Pages
 
                 if (resultado != null)
                 {
-                    // Tentar ler propriedades do resultado JSON
+
                     bool emailEnviado = true;
                     bool usuarioEncontrado = true;
                     bool success = true;
@@ -70,12 +70,11 @@ namespace CarTechAssist.Web.Pages
 
                     try
                     {
-                        // Converter para JsonElement para ler propriedades
+
                         var jsonString = System.Text.Json.JsonSerializer.Serialize(resultado);
                         var jsonDoc = JsonDocument.Parse(jsonString);
                         var root = jsonDoc.RootElement;
 
-                        // Verificar se há erro na resposta
                         if (root.TryGetProperty("success", out var successElement))
                             success = successElement.GetBoolean();
                         
@@ -88,8 +87,7 @@ namespace CarTechAssist.Web.Pages
                             usuarioEncontrado = usuarioEncontradoElement.GetBoolean();
                         if (root.TryGetProperty("codigo", out var codigoElement) && codigoElement.ValueKind != JsonValueKind.Null)
                             codigo = codigoElement.GetString();
-                        
-                        // Verificar se há erro específico
+
                         if (root.TryGetProperty("error", out var errorElement))
                         {
                             var errorValue = errorElement.GetString();
@@ -103,10 +101,9 @@ namespace CarTechAssist.Web.Pages
                     catch (Exception ex)
                     {
                         _logger.LogWarning(ex, "Não foi possível ler propriedades da resposta de recuperação");
-                        // Se não conseguir acessar, assume valores padrão
+
                     }
 
-                    // Se success = false, significa que houve erro de validação
                     if (!success && !string.IsNullOrEmpty(mensagemErro))
                     {
                         ErrorMessage = mensagemErro;
@@ -119,7 +116,7 @@ namespace CarTechAssist.Web.Pages
                     }
                     else if (!emailEnviado)
                     {
-                        // Email não foi enviado - não mostrar código na tela por segurança
+
                         ErrorMessage = "Não foi possível enviar o email. Verifique se o email está configurado corretamente no servidor ou entre em contato com o suporte.";
                         _logger.LogWarning("Email não enviado para recuperação de senha. Login: {Login}, Email: {Email}", Login, Email);
                     }
@@ -129,8 +126,7 @@ namespace CarTechAssist.Web.Pages
                         InfoMessage = "Verifique sua caixa de entrada e spam. O código é válido por 30 minutos.";
                         EmailSent = true;
                     }
-                    
-                    // Limpar campos apenas se email foi enviado
+
                     if (emailEnviado && success)
                     {
                         Login = string.Empty;
@@ -147,7 +143,6 @@ namespace CarTechAssist.Web.Pages
             {
                 _logger.LogError(ex, "Erro ao solicitar recuperação: {Message}", ex.Message);
 
-                // Tentar extrair mensagem da API do Data da exceção
                 if (ex.Data.Contains("Message") && ex.Data["Message"] != null)
                 {
                     var apiMessage = ex.Data["Message"]?.ToString();
@@ -158,7 +153,6 @@ namespace CarTechAssist.Web.Pages
                     }
                 }
 
-                // Tentar extrair do ResponseContent
                 if (ex.Data.Contains("ResponseContent") && ex.Data["ResponseContent"] != null)
                 {
                     var responseContent = ex.Data["ResponseContent"]?.ToString();
@@ -181,12 +175,11 @@ namespace CarTechAssist.Web.Pages
                         }
                         catch
                         {
-                            // Ignora se não conseguir parsear
+
                         }
                     }
                 }
 
-                // Verificar se a mensagem da exceção contém informações sobre erro de validação
                 if (ex.Message.Contains("EmailInvalido") || ex.Message.Contains("email informado não corresponde") || ex.Message.Contains("email não corresponde"))
                 {
                     ErrorMessage = "O email informado não corresponde ao cadastrado. Verifique o email e tente novamente.";
@@ -205,14 +198,12 @@ namespace CarTechAssist.Web.Pages
                     return Page();
                 }
 
-                // Para outros erros HTTP, tentar extrair mensagem do response
                 ErrorMessage = "Erro ao solicitar recuperação de senha. Verifique os dados e tente novamente.";
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Erro inesperado ao solicitar recuperação: {Message}", ex.Message);
-                
-                // Verificar se a exceção contém mensagem de validação
+
                 if (ex.Message.Contains("EmailInvalido") || ex.Message.Contains("email informado não corresponde") || ex.Message.Contains("email não corresponde"))
                 {
                     ErrorMessage = "O email informado não corresponde ao cadastrado. Verifique o email e tente novamente.";

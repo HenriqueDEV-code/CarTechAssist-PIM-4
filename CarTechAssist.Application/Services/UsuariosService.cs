@@ -4,19 +4,16 @@ using CarTechAssist.Contracts.Common;
 using CarTechAssist.Contracts.Usuarios;
 using CarTechAssist.Domain.Entities;
 using CarTechAssist.Domain.Interfaces;
-using Microsoft.Extensions.Logging;
 
 namespace CarTechAssist.Application.Services
 {
     public class UsuariosService
     {
         private readonly IUsuariosRepository _usuariosRepository;
-        private readonly ILogger<UsuariosService> _logger;
 
-        public UsuariosService(IUsuariosRepository usuariosRepository, ILogger<UsuariosService> logger)
+        public UsuariosService(IUsuariosRepository usuariosRepository)
         {
             _usuariosRepository = usuariosRepository;
-            _logger = logger;
         }
 
         public async Task<PagedResult<UsuarioDto>> ListarAsync(
@@ -50,7 +47,6 @@ namespace CarTechAssist.Application.Services
             var usuario = await _usuariosRepository.ObterPorIdAsync(usuarioId, ct);
             if (usuario == null) return null;
 
-            // CORREÇÃO CRÍTICA: Validar se usuário pertence ao tenant
             if (usuario.TenantId != tenantId)
                 throw new UnauthorizedAccessException("Usuário não pertence ao tenant atual.");
 
@@ -71,69 +67,41 @@ namespace CarTechAssist.Application.Services
             CriarUsuarioRequest request,
             CancellationToken ct)
         {
-            _logger.LogInformation("🟢 SERVICE: Iniciando criação de usuário. TenantId: {TenantId}, Login: {Login}, TipoUsuarioId: {TipoUsuarioId}",
-                tenantId, request.Login, request.TipoUsuarioId);
 
-            try
+            var existe = await _usuariosRepository.ExisteLoginAsync(tenantId, request.Login, ct);
+            if (existe)
+                throw new InvalidOperationException($"Login '{request.Login}' já está em uso neste tenant.");
+
+            var (hash, salt) = HashPassword(request.Senha);
+
+            var usuario = new Usuario
             {
-                // Validar login único
-                _logger.LogInformation("🔍 Verificando se login já existe...");
-                var existe = await _usuariosRepository.ExisteLoginAsync(tenantId, request.Login, ct);
-                if (existe)
-                {
-                    _logger.LogWarning("⚠️ Login '{Login}' já está em uso no tenant {TenantId}", request.Login, tenantId);
-                    throw new InvalidOperationException($"Login '{request.Login}' já está em uso neste tenant.");
-                }
-                _logger.LogInformation("✅ Login disponível.");
+                TenantId = tenantId,
+                Login = request.Login,
+                NomeCompleto = request.NomeCompleto,
+                Email = request.Email,
+                Telefone = request.Telefone,
+                TipoUsuarioId = (Domain.Enums.TipoUsuarios)request.TipoUsuarioId,
+                HashSenha = hash,
+                SaltSenha = salt,
+                PrecisaTrocarSenha = false,
+                Ativo = true,
+                DataCriacao = DateTime.UtcNow,
+                Excluido = false
+            };
 
-                // Hash da senha
-                _logger.LogInformation("🔐 Gerando hash da senha...");
-                var (hash, salt) = HashPassword(request.Senha);
-                _logger.LogInformation("✅ Hash gerado. HashLength: {HashLength}, SaltLength: {SaltLength}",
-                    hash?.Length ?? 0, salt?.Length ?? 0);
+            usuario = await _usuariosRepository.CriarAsync(usuario, ct);
 
-                var usuario = new Usuario
-                {
-                    TenantId = tenantId,
-                    Login = request.Login,
-                    NomeCompleto = request.NomeCompleto,
-                    Email = request.Email,
-                    Telefone = request.Telefone,
-                    TipoUsuarioId = (Domain.Enums.TipoUsuarios)request.TipoUsuarioId,
-                    HashSenha = hash,
-                    SaltSenha = salt,
-                    PrecisaTrocarSenha = false, // CORREÇÃO: Definir PrecisaTrocarSenha
-                    Ativo = true,
-                    DataCriacao = DateTime.UtcNow,
-                    Excluido = false
-                };
-
-                _logger.LogInformation("📦 Objeto Usuario criado. Chamando repositório...");
-                usuario = await _usuariosRepository.CriarAsync(usuario, ct);
-                _logger.LogInformation("✅ Repositório retornou. UsuarioId: {UsuarioId}", usuario.UsuarioId);
-
-                var dto = new UsuarioDto(
-                    usuario.UsuarioId,
-                    usuario.Login,
-                    usuario.NomeCompleto,
-                    usuario.Email,
-                    usuario.Telefone,
-                    (byte)usuario.TipoUsuarioId,
-                    usuario.Ativo,
-                    usuario.DataCriacao
-                );
-
-                _logger.LogInformation("🎉 SERVICE: Usuário criado com sucesso! UsuarioId: {UsuarioId}, Login: {Login}",
-                    dto.UsuarioId, dto.Login);
-
-                return dto;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "❌ ERRO no SERVICE ao criar usuário. Tipo: {Type}, Message: {Message}",
-                    ex.GetType().Name, ex.Message);
-                throw;
-            }
+            return new UsuarioDto(
+                usuario.UsuarioId,
+                usuario.Login,
+                usuario.NomeCompleto,
+                usuario.Email,
+                usuario.Telefone,
+                (byte)usuario.TipoUsuarioId,
+                usuario.Ativo,
+                usuario.DataCriacao
+            );
         }
 
         public async Task<UsuarioDto> AtualizarAsync(
@@ -182,12 +150,11 @@ namespace CarTechAssist.Application.Services
 
         public async Task ResetSenhaPorLoginAsync(int tenantId, string login, string novaSenha, CancellationToken ct)
         {
-            // Buscar usuário pelo login
+
             var usuario = await _usuariosRepository.ObterPorLoginAsync(tenantId, login, ct);
             if (usuario == null)
                 throw new InvalidOperationException($"Usuário com login '{login}' não encontrado no tenant {tenantId}.");
 
-            // Resetar a senha
             var (hash, salt) = HashPassword(novaSenha);
             await _usuariosRepository.AtualizarSenhaAsync(usuario.UsuarioId, hash, salt, ct);
         }

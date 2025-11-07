@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -23,7 +23,7 @@ namespace CarTechAssist.Domain.Entities
         public DateTime? SLA_EstimadoFim { get; set; }
         public DateTime? DataResolvido { get; set; }
         public DateTime? DataFechado { get; set; }
-        // IA
+
         public int? IA_CategoriaSugeridaId { get; set; }
         public decimal? IA_PrioridadeScore { get; set; }
         public string? IA_Resumo { get; set; }
@@ -31,7 +31,7 @@ namespace CarTechAssist.Domain.Entities
         public decimal? IA_UltimaConfianca { get; set; }
         public bool IA_AtendidoPorIA { get; set; }
         public IAFeedbackScore? IA_FeedbackScore { get; set; }
-        // Outros
+
         public string? FonteExternaId { get; set; }
         public DateTime DataCriacao { get; set; }
         public DateTime? DataAtualizacao { get; set; }

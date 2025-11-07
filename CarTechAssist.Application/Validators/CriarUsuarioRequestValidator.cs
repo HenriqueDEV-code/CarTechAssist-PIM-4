@@ -1,4 +1,5 @@
 using CarTechAssist.Contracts.Usuarios;
+using CarTechAssist.Domain.Enums;
 using FluentValidation;
 
 namespace CarTechAssist.Application.Validators
@@ -29,7 +30,8 @@ namespace CarTechAssist.Application.Validators
                 .MinimumLength(6).WithMessage("Senha deve ter no mínimo 6 caracteres.");
 
             RuleFor(x => x.TipoUsuarioId)
-                .IsInEnum().WithMessage("Tipo de usuário inválido.");
+                .Must(tipoId => Enum.IsDefined(typeof(TipoUsuarios), tipoId))
+                .WithMessage("Tipo de usuário inválido. Valores válidos: 1 (Cliente), 2 (Técnico), 3 (Administrador), 4 (Bot).");
 
             RuleFor(x => x.Telefone)
                 .MaximumLength(20).WithMessage("Telefone deve ter no máximo 20 caracteres.")
