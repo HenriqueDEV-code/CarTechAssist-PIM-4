@@ -103,7 +103,7 @@ namespace CarTechAssist.Api.Attributes
             {
                 logger?.LogWarning("Acesso negado. Role do usuário: {UserRole}, Roles permitidas: {AllowedRoles}", 
                     userRole, string.Join(", ", _allowedRoles));
-                context.Result = new ObjectResult(new { message = "Você não tem permissão para usar o ChatBot. Esta funcionalidade é apenas para clientes." })
+                context.Result = new ObjectResult(new { message = "Acesso negado. Você não tem permissão para acessar este recurso." })
                 {
                     StatusCode = 403
                 };

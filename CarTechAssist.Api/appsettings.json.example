@@ -22,12 +22,13 @@
     "LanguageCode": "pt-BR",
     "AgentId": ""
   },
-  "OpenAI": {
+  "OpenRouter": {
     "Enabled": "true",
-    "ApiKey": "",
-    "Model": "gpt-4o-mini",
+    "ApiKey": "sk-or-v1-your-api-key-here",
+    "Model": "openai/gpt-4o-mini",
     "MaxTokens": "1000",
-    "Temperature": "0.7"
+    "Temperature": "0.7",
+    "HttpReferer": "https://your-domain.com"
   },
   "FileUpload": {
     "MaxFileSizeBytes": "10485760",

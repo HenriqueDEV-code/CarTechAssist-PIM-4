@@ -13,7 +13,6 @@
 │   │   ├── 📄 AuthController.cs
 │   │   ├── 📄 CategoriasController.cs
 │   │   ├── 📄 ChamadosController.cs
-│   │   ├── 📄 ChatBotController.cs
 │   │   ├── 📄 EmailTestController.cs
 │   │   ├── 📄 RecuperacaoSenhaController.cs
 │   │   ├── 📄 SetupController.cs
@@ -45,12 +44,11 @@
 │   │   ├── 📄 AuthService.cs
 │   │   ├── 📄 CategoriasService.cs
 │   │   ├── 📄 ChamadosService.cs
-│   │   ├── 📄 ChatBotService.cs
 │   │   ├── 📄 DialogflowService.cs
 │   │   ├── 📄 EmailService.cs
 │   │   ├── 📄 EnumHelperService.cs
 │   │   ├── 📄 InputSanitizer.cs
-│   │   ├── 📄 OpenAIService.cs
+│   │   ├── 📄 OpenRouterService.cs
 │   │   ├── 📄 RecuperacaoSenhaService.cs
 │   │   └── 📄 UsuariosService.cs
 │   ├── 📁 Validators
@@ -67,11 +65,6 @@
 │   │   ├── 📄 RefreshTokenRequest.cs
 │   │   ├── 📄 SolicitarRecuperacaoRequest.cs
 │   │   └── 📄 UsuarioLogadoDto.cs
-│   ├── 📁 ChatBot
-│   │   ├── 📄 ChatBotContexto.cs
-│   │   ├── 📄 ChatBotMensagemDto.cs
-│   │   ├── 📄 ChatBotRequest.cs
-│   │   └── 📄 ChatBotResponse.cs
 │   ├── 📁 Common
 │   │   └── 📄 PagedResult.cs
 │   ├── 📁 Enums
@@ -161,8 +154,6 @@
 │   │   │   └── 📄 _ValidationScriptsPartial.cshtml
 │   │   ├── 📄 Chamados.cshtml
 │   │   ├── 📄 Chamados.cshtml.cs
-│   │   ├── 📄 ChatBot.cshtml
-│   │   ├── 📄 ChatBot.cshtml.cs
 │   │   ├── 📄 Dashboard.cshtml
 │   │   ├── 📄 Dashboard.cshtml.cs
 │   │   ├── 📄 Error.cshtml
@@ -190,7 +181,6 @@
 │   │   ├── 📄 AuthService.cs
 │   │   ├── 📄 CategoriasService.cs
 │   │   ├── 📄 ChamadosService.cs
-│   │   ├── 📄 ChatBotService.cs
 │   │   └── 📄 UsuariosService.cs
 │   ├── 📁 wwwroot
 │   │   ├── 📁 css

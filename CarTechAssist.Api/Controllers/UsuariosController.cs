@@ -5,6 +5,8 @@ using CarTechAssist.Application.Services;
 using CarTechAssist.Contracts.Common;
 using CarTechAssist.Contracts.Usuarios;
 using CarTechAssist.Api.Attributes;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace CarTechAssist.Api.Controllers
 {
@@ -83,14 +85,71 @@ namespace CarTechAssist.Api.Controllers
             [FromBody] CriarUsuarioRequest request,
             CancellationToken ct = default)
         {
+            var logger = HttpContext.RequestServices.GetRequiredService<ILogger<UsuariosController>>();
+            
             try
             {
-                var result = await _usuariosService.CriarAsync(GetTenantId(), request, ct);
+                logger.LogInformation("🔴 CONTROLLER: Recebida requisição para criar usuário. Login: {Login}, TipoUsuarioId: {TipoUsuarioId}",
+                    request.Login, request.TipoUsuarioId);
+                
+                var tenantId = GetTenantId();
+                logger.LogInformation("🔴 CONTROLLER: TenantId obtido: {TenantId}", tenantId);
+                
+                // Validar campos obrigatórios
+                if (string.IsNullOrWhiteSpace(request.Login))
+                {
+                    logger.LogWarning("⚠️ Login vazio ou nulo");
+                    return BadRequest(new { message = "Login é obrigatório." });
+                }
+                
+                if (string.IsNullOrWhiteSpace(request.NomeCompleto))
+                {
+                    logger.LogWarning("⚠️ NomeCompleto vazio ou nulo");
+                    return BadRequest(new { message = "Nome completo é obrigatório." });
+                }
+                
+                if (string.IsNullOrWhiteSpace(request.Senha))
+                {
+                    logger.LogWarning("⚠️ Senha vazia ou nula");
+                    return BadRequest(new { message = "Senha é obrigatória." });
+                }
+                
+                if (request.Senha.Length < 6)
+                {
+                    logger.LogWarning("⚠️ Senha muito curta: {Length} caracteres", request.Senha.Length);
+                    return BadRequest(new { message = "A senha deve ter no mínimo 6 caracteres." });
+                }
+                
+                // Validar que é Agente(2) ou Admin(3)
+                if (request.TipoUsuarioId != 2 && request.TipoUsuarioId != 3)
+                {
+                    logger.LogWarning("⚠️ TipoUsuarioId inválido: {TipoUsuarioId}. Esperado: 2 ou 3", request.TipoUsuarioId);
+                    return BadRequest(new { message = "Apenas Agente(2) e Admin(3) podem ser criados aqui." });
+                }
+                
+                logger.LogInformation("🔴 CONTROLLER: Validações passadas. Chamando service...");
+                var result = await _usuariosService.CriarAsync(tenantId, request, ct);
+                
+                logger.LogInformation("🎉 CONTROLLER: Usuário criado com sucesso! UsuarioId: {UsuarioId}, Login: {Login}", 
+                    result.UsuarioId, result.Login);
+                
                 return CreatedAtAction(nameof(Obter), new { id = result.UsuarioId }, result);
             }
             catch (InvalidOperationException ex)
             {
-                return BadRequest(ex.Message);
+                logger.LogError(ex, "Erro ao criar usuário: {Message}", ex.Message);
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                logger.LogError(ex, "Erro de autorização ao criar usuário: {Message}", ex.Message);
+                return Unauthorized(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Erro inesperado ao criar usuário: {Message}, StackTrace: {StackTrace}", 
+                    ex.Message, ex.StackTrace);
+                return StatusCode(500, new { message = "Erro ao criar usuário. Tente novamente." });
             }
         }
 
@@ -103,26 +162,68 @@ namespace CarTechAssist.Api.Controllers
             [FromBody] CriarUsuarioRequest request,
             CancellationToken ct = default)
         {
+            var logger = HttpContext.RequestServices.GetRequiredService<ILogger<UsuariosController>>();
+            
             try
             {
+                logger.LogInformation("🔴 CONTROLLER (PUBLICO): Recebida requisição de registro público. Login: {Login}, Email: {Email}, TipoUsuarioId: {TipoUsuarioId}", 
+                    request.Login, request.Email, request.TipoUsuarioId);
+                
                 // Validar que é apenas para clientes
                 if (request.TipoUsuarioId != 1)
                 {
+                    logger.LogWarning("⚠️ Tentativa de criar usuário não-cliente via endpoint público. TipoUsuarioId: {TipoUsuarioId}", 
+                        request.TipoUsuarioId);
                     return BadRequest(new { message = "Este endpoint é apenas para registro de clientes." });
+                }
+
+                // Validar campos obrigatórios
+                if (string.IsNullOrWhiteSpace(request.Login))
+                {
+                    logger.LogWarning("⚠️ Login vazio ou nulo");
+                    return BadRequest(new { message = "Login é obrigatório." });
+                }
+                
+                if (string.IsNullOrWhiteSpace(request.NomeCompleto))
+                {
+                    logger.LogWarning("⚠️ NomeCompleto vazio ou nulo");
+                    return BadRequest(new { message = "Nome completo é obrigatório." });
+                }
+                
+                if (string.IsNullOrWhiteSpace(request.Senha))
+                {
+                    logger.LogWarning("⚠️ Senha vazia ou nula");
+                    return BadRequest(new { message = "Senha é obrigatória." });
+                }
+                
+                if (request.Senha.Length < 6)
+                {
+                    logger.LogWarning("⚠️ Senha muito curta: {Length} caracteres", request.Senha.Length);
+                    return BadRequest(new { message = "A senha deve ter no mínimo 6 caracteres." });
                 }
 
                 // TenantId padrão para registro público
                 var tenantId = 1;
 
+                logger.LogInformation("🔴 CONTROLLER (PUBLICO): Validações passadas. TenantId: {TenantId}, Login: {Login}. Chamando service...", 
+                    tenantId, request.Login);
+                
                 var result = await _usuariosService.CriarAsync(tenantId, request, ct);
+                
+                logger.LogInformation("🎉 CONTROLLER (PUBLICO): Cliente criado com sucesso! UsuarioId: {UsuarioId}, Login: {Login}", 
+                    result.UsuarioId, result.Login);
+                
                 return CreatedAtAction(nameof(Obter), new { id = result.UsuarioId }, result);
             }
             catch (InvalidOperationException ex)
             {
+                logger.LogError(ex, "Erro de validação ao criar cliente: {Message}", ex.Message);
                 return BadRequest(new { message = ex.Message });
             }
             catch (Exception ex)
             {
+                logger.LogError(ex, "Erro inesperado ao criar cliente: {Message}, StackTrace: {StackTrace}", 
+                    ex.Message, ex.StackTrace);
                 return StatusCode(500, new { message = "Erro ao criar conta. Tente novamente." });
             }
         }

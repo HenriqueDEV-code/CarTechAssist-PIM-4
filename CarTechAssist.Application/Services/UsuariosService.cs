@@ -4,16 +4,19 @@ using CarTechAssist.Contracts.Common;
 using CarTechAssist.Contracts.Usuarios;
 using CarTechAssist.Domain.Entities;
 using CarTechAssist.Domain.Interfaces;
+using Microsoft.Extensions.Logging;
 
 namespace CarTechAssist.Application.Services
 {
     public class UsuariosService
     {
         private readonly IUsuariosRepository _usuariosRepository;
+        private readonly ILogger<UsuariosService> _logger;
 
-        public UsuariosService(IUsuariosRepository usuariosRepository)
+        public UsuariosService(IUsuariosRepository usuariosRepository, ILogger<UsuariosService> logger)
         {
             _usuariosRepository = usuariosRepository;
+            _logger = logger;
         }
 
         public async Task<PagedResult<UsuarioDto>> ListarAsync(
@@ -68,41 +71,69 @@ namespace CarTechAssist.Application.Services
             CriarUsuarioRequest request,
             CancellationToken ct)
         {
-            // Validar login único
-            var existe = await _usuariosRepository.ExisteLoginAsync(tenantId, request.Login, ct);
-            if (existe)
-                throw new InvalidOperationException($"Login '{request.Login}' já está em uso neste tenant.");
+            _logger.LogInformation("🟢 SERVICE: Iniciando criação de usuário. TenantId: {TenantId}, Login: {Login}, TipoUsuarioId: {TipoUsuarioId}",
+                tenantId, request.Login, request.TipoUsuarioId);
 
-            // Hash da senha
-            var (hash, salt) = HashPassword(request.Senha);
-
-            var usuario = new Usuario
+            try
             {
-                TenantId = tenantId,
-                Login = request.Login,
-                NomeCompleto = request.NomeCompleto,
-                Email = request.Email,
-                Telefone = request.Telefone,
-                TipoUsuarioId = (Domain.Enums.TipoUsuarios)request.TipoUsuarioId,
-                HashSenha = hash,
-                SaltSenha = salt,
-                Ativo = true,
-                DataCriacao = DateTime.UtcNow,
-                Excluido = false
-            };
+                // Validar login único
+                _logger.LogInformation("🔍 Verificando se login já existe...");
+                var existe = await _usuariosRepository.ExisteLoginAsync(tenantId, request.Login, ct);
+                if (existe)
+                {
+                    _logger.LogWarning("⚠️ Login '{Login}' já está em uso no tenant {TenantId}", request.Login, tenantId);
+                    throw new InvalidOperationException($"Login '{request.Login}' já está em uso neste tenant.");
+                }
+                _logger.LogInformation("✅ Login disponível.");
 
-            usuario = await _usuariosRepository.CriarAsync(usuario, ct);
+                // Hash da senha
+                _logger.LogInformation("🔐 Gerando hash da senha...");
+                var (hash, salt) = HashPassword(request.Senha);
+                _logger.LogInformation("✅ Hash gerado. HashLength: {HashLength}, SaltLength: {SaltLength}",
+                    hash?.Length ?? 0, salt?.Length ?? 0);
 
-            return new UsuarioDto(
-                usuario.UsuarioId,
-                usuario.Login,
-                usuario.NomeCompleto,
-                usuario.Email,
-                usuario.Telefone,
-                (byte)usuario.TipoUsuarioId,
-                usuario.Ativo,
-                usuario.DataCriacao
-            );
+                var usuario = new Usuario
+                {
+                    TenantId = tenantId,
+                    Login = request.Login,
+                    NomeCompleto = request.NomeCompleto,
+                    Email = request.Email,
+                    Telefone = request.Telefone,
+                    TipoUsuarioId = (Domain.Enums.TipoUsuarios)request.TipoUsuarioId,
+                    HashSenha = hash,
+                    SaltSenha = salt,
+                    PrecisaTrocarSenha = false, // CORREÇÃO: Definir PrecisaTrocarSenha
+                    Ativo = true,
+                    DataCriacao = DateTime.UtcNow,
+                    Excluido = false
+                };
+
+                _logger.LogInformation("📦 Objeto Usuario criado. Chamando repositório...");
+                usuario = await _usuariosRepository.CriarAsync(usuario, ct);
+                _logger.LogInformation("✅ Repositório retornou. UsuarioId: {UsuarioId}", usuario.UsuarioId);
+
+                var dto = new UsuarioDto(
+                    usuario.UsuarioId,
+                    usuario.Login,
+                    usuario.NomeCompleto,
+                    usuario.Email,
+                    usuario.Telefone,
+                    (byte)usuario.TipoUsuarioId,
+                    usuario.Ativo,
+                    usuario.DataCriacao
+                );
+
+                _logger.LogInformation("🎉 SERVICE: Usuário criado com sucesso! UsuarioId: {UsuarioId}, Login: {Login}",
+                    dto.UsuarioId, dto.Login);
+
+                return dto;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ ERRO no SERVICE ao criar usuário. Tipo: {Type}, Message: {Message}",
+                    ex.GetType().Name, ex.Message);
+                throw;
+            }
         }
 
         public async Task<UsuarioDto> AtualizarAsync(

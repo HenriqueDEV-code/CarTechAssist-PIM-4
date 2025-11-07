@@ -20,7 +20,7 @@ Sistema completo de gerenciamento de chamados técnicos (tickets) multi-tenant c
 O **CarTechAssist** é uma solução completa para gerenciamento de chamados técnicos que oferece:
 
 - **Multi-tenant**: Suporte a múltiplos clientes/tenants isolados
-- **IA Integrada**: Chatbot inteligente com OpenAI e Dialogflow para categorização automática e atendimento
+- **IA Integrada**: OpenRouter (gateway unificado para múltiplos modelos de IA) e Dialogflow para categorização automática
 - **Tempo Real**: Comunicação em tempo real via SignalR
 - **Múltiplas Interfaces**: API REST, aplicação web e desktop
 - **Segurança**: Autenticação JWT, rate limiting e sanitização de inputs
@@ -78,8 +78,8 @@ O projeto segue uma **arquitetura em camadas (Clean Architecture)** com separaç
 - **AutoMapper**
 
 ### IA e Integrações
-- **OpenAI API** (ChatGPT)
-- **Google Dialogflow**
+- **OpenRouter API** (Gateway unificado para múltiplos modelos de IA - OpenAI, Anthropic, etc.)
+- **Google Dialogflow** (Opcional, como fallback)
 - **HtmlSanitizer** (sanitização de inputs)
 
 ### Frontend
@@ -112,8 +112,8 @@ O projeto segue uma **arquitetura em camadas (Clean Architecture)** com separaç
 - ✅ Controle de ativação/desativação
 - ✅ Diferentes tipos de usuários (roles)
 
-### ChatBot Inteligente
-- ✅ Integração com OpenAI e Dialogflow
+### IA e Categorização Automática
+- ✅ Integração com OpenRouter (suporte a múltiplos modelos de IA)
 - ✅ Categorização automática de chamados
 - ✅ Sugestão de prioridades
 - ✅ Resumo automático de chamados
@@ -151,7 +151,6 @@ CarTechAssist/
 │   ├── Auth/                        # Contratos de autenticação
 │   ├── Tickets/                     # Contratos de chamados
 │   ├── Usuarios/                    # Contratos de usuários
-│   ├── ChatBot/                     # Contratos do chatbot
 │   └── Feedback/                    # Contratos de feedback
 │
 ├── CarTechAssist.Domain/            # Camada de Domínio
@@ -175,8 +174,8 @@ CarTechAssist/
 - [.NET 8.0 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
 - [SQL Server](https://www.microsoft.com/sql-server) (2019 ou superior)
 - [Visual Studio 2022](https://visualstudio.microsoft.com/) ou [VS Code](https://code.visualstudio.com/) (opcional)
-- Conta OpenAI (para funcionalidades de IA)
-- Conta Google Cloud (para Dialogflow - opcional)
+- Conta OpenRouter (para funcionalidades de IA) - [Criar conta em openrouter.ai](https://openrouter.ai) (opcional)
+- Conta Google Cloud (para Dialogflow - opcional, usado como fallback)
 
 ## ⚙️ Configuração
 
@@ -232,13 +231,24 @@ export ConnectionStrings__DefaultConnection="Data Source=localhost;..."
 export JWT__SecretKey="SUA_CHAVE_SECRETA"
 ```
 
-### 4. Configurar OpenAI (Opcional)
+### 4. Configurar OpenRouter (Opcional)
 
-Se desejar usar as funcionalidades de IA:
+Para usar funcionalidades de IA, configure o OpenRouter no `appsettings.json`:
 
-```bash
-dotnet user-secrets set "OpenAI:ApiKey" "SUA_API_KEY_OPENAI"
+```json
+{
+  "OpenRouter": {
+    "Enabled": "true",
+    "ApiKey": "sk-or-v1-SUA_API_KEY_AQUI",
+    "Model": "openai/gpt-4o-mini",
+    "MaxTokens": "1000",
+    "Temperature": "0.7",
+    "HttpReferer": "https://cartechassist.local"
+  }
+}
 ```
+
+**Nota:** O OpenRouter é um gateway unificado que permite usar múltiplos modelos de IA (OpenAI, Anthropic, etc.) através de uma única API.
 
 ### 5. Executar migrações (se houver)
 
@@ -311,8 +321,6 @@ A aplicação web estará disponível em:
 - `PUT /api/Usuarios/{id}` - Atualizar usuário
 - `DELETE /api/Usuarios/{id}` - Deletar usuário
 
-#### ChatBot
-- `POST /api/ChatBot/mensagem` - Enviar mensagem ao chatbot
 
 #### Categorias
 - `GET /api/Categorias` - Listar categorias
@@ -364,7 +372,7 @@ Este projeto está sob a licença especificada no arquivo `LICENSE.txt`.
 ## 🙏 Agradecimentos
 
 - Comunidade .NET
-- OpenAI
+- OpenRouter (Gateway unificado de IA)
 - Google Cloud (Dialogflow)
 
 ---

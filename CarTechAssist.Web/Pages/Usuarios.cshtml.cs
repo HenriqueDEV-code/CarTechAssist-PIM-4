@@ -110,9 +110,45 @@ namespace CarTechAssist.Web.Pages
 
             try
             {
+                // Validar campos obrigatórios antes de enviar
+                if (string.IsNullOrWhiteSpace(NovoUsuario.Login))
+                {
+                    ErrorMessage = "Login é obrigatório.";
+                    MostrarFormulario = true;
+                    return await OnGetAsync(ct: ct);
+                }
+                
+                if (string.IsNullOrWhiteSpace(NovoUsuario.NomeCompleto))
+                {
+                    ErrorMessage = "Nome completo é obrigatório.";
+                    MostrarFormulario = true;
+                    return await OnGetAsync(ct: ct);
+                }
+                
+                if (string.IsNullOrWhiteSpace(NovoUsuario.Senha))
+                {
+                    ErrorMessage = "Senha é obrigatória.";
+                    MostrarFormulario = true;
+                    return await OnGetAsync(ct: ct);
+                }
+                
+                if (NovoUsuario.Senha.Length < 6)
+                {
+                    ErrorMessage = "A senha deve ter no mínimo 6 caracteres.";
+                    MostrarFormulario = true;
+                    return await OnGetAsync(ct: ct);
+                }
+                
+                _logger.LogInformation("Enviando requisição para criar usuário. Login: {Login}, TipoUsuarioId: {TipoUsuarioId}", 
+                    NovoUsuario.Login, NovoUsuario.TipoUsuarioId);
+                
                 var resultado = await _usuariosService.CriarAsync(NovoUsuario, ct);
+                
                 if (resultado != null)
                 {
+                    _logger.LogInformation("Usuário criado com sucesso. UsuarioId: {UsuarioId}, Login: {Login}", 
+                        resultado.UsuarioId, resultado.Login);
+                    
                     SuccessMessage = $"Usuário '{resultado.NomeCompleto}' criado com sucesso!";
                     NovoUsuario = new CriarUsuarioRequest(
                         Login: string.Empty,
@@ -124,11 +160,48 @@ namespace CarTechAssist.Web.Pages
                     );
                     ModelState.Clear();
                 }
+                else
+                {
+                    _logger.LogWarning("API retornou null ao criar usuário");
+                    ErrorMessage = "Erro ao criar usuário. A API não retornou dados.";
+                    MostrarFormulario = true;
+                }
+            }
+            catch (System.Net.Http.HttpRequestException httpEx)
+            {
+                _logger.LogError(httpEx, "Erro HTTP ao criar usuário. StatusCode: {StatusCode}, Message: {Message}",
+                    httpEx.Data.Contains("StatusCode") ? httpEx.Data["StatusCode"] : "Desconhecido",
+                    httpEx.Data.Contains("Message") ? httpEx.Data["Message"] : httpEx.Message);
+                
+                if (httpEx.Data.Contains("StatusCode") && httpEx.Data["StatusCode"] is System.Net.HttpStatusCode statusCode)
+                {
+                    if (statusCode == System.Net.HttpStatusCode.BadRequest)
+                    {
+                        var apiMessage = httpEx.Data.Contains("Message") ? httpEx.Data["Message"]?.ToString() : null;
+                        ErrorMessage = !string.IsNullOrEmpty(apiMessage) ? apiMessage : "Dados inválidos. Verifique os campos e tente novamente.";
+                    }
+                    else if (statusCode == System.Net.HttpStatusCode.Unauthorized)
+                    {
+                        ErrorMessage = "Sua sessão expirou. Por favor, faça login novamente.";
+                        return RedirectToPage("/Login");
+                    }
+                    else
+                    {
+                        var apiMessage = httpEx.Data.Contains("Message") ? httpEx.Data["Message"]?.ToString() : null;
+                        ErrorMessage = !string.IsNullOrEmpty(apiMessage) ? apiMessage : $"Erro ao criar usuário: {httpEx.Message}";
+                    }
+                }
+                else
+                {
+                    ErrorMessage = $"Erro ao criar usuário: {httpEx.Message}";
+                }
+                MostrarFormulario = true;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Erro ao criar usuário");
-                ErrorMessage = "Erro ao criar usuário. Verifique os dados e tente novamente.";
+                _logger.LogError(ex, "Erro inesperado ao criar usuário. Tipo: {Type}, Message: {Message}, StackTrace: {StackTrace}",
+                    ex.GetType().Name, ex.Message, ex.StackTrace);
+                ErrorMessage = $"Erro ao criar usuário: {ex.Message}";
                 MostrarFormulario = true;
             }
 

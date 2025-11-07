@@ -42,7 +42,7 @@ namespace CarTechAssist.Api
             builder.Services.AddScoped<IFeedbackRepository, FeedbackRepository>();
             builder.Services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
 
-            // HttpClient para OpenAI
+            // HttpClient para OpenRouter
             builder.Services.AddHttpClient();
 
             // Services
@@ -52,8 +52,7 @@ namespace CarTechAssist.Api
             builder.Services.AddScoped<ChamadosService>();
             builder.Services.AddScoped<UsuariosService>();
             builder.Services.AddScoped<DialogflowService>();
-            builder.Services.AddScoped<OpenAIService>();
-            builder.Services.AddScoped<ChatBotService>();
+            builder.Services.AddScoped<OpenRouterService>();
             builder.Services.AddScoped<CategoriasService>();
             
            
