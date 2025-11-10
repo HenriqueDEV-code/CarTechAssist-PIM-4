@@ -1,0 +1,341 @@
+@page "/Chamados/Detalhes/{id:long}"
+@model CarTechAssist.Web.Pages.Chamados.DetalhesModel
+@{
+    ViewData["Title"] = "Detalhes do Chamado";
+}
+
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <h1 class="mb-0">
+                    <i class="bi bi-list-ul text-success"></i> Detalhes do Chamado
+                </h1>
+                @if (Model.Chamado != null)
+                {
+                    <p class="text-muted mb-0">@Model.Chamado.Numero - @Model.Chamado.Titulo</p>
+                }
+            </div>
+            <div>
+                <a href="/Chamados" class="btn btn-outline-secondary">
+                    <i class="bi bi-arrow-left"></i> ← Voltar
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+@if (!string.IsNullOrEmpty(Model.ErrorMessage))
+{
+    <div class="alert alert-danger" role="alert">
+        @Model.ErrorMessage
+    </div>
+}
+
+@if (Model.Chamado != null)
+{
+    <div class="row">
+        <!-- Informações do Chamado -->
+        <div class="col-12 mb-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="bi bi-info-circle"></i> Informações do Chamado
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <strong>Número:</strong> @Model.Chamado.Numero
+                        </div>
+                        <div class="col-md-6 mb-3 text-md-end">
+                            <strong>Data de Criação:</strong> @Model.Chamado.DataCriacao.ToString("dd/MM/yyyy HH:mm")
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <strong>Título:</strong> @Model.Chamado.Titulo
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <strong>Status:</strong>
+                            <span class="badge @Model.GetStatusBadgeClass(Model.Chamado.StatusId) ms-2">
+                                @Model.Chamado.StatusNome
+                            </span>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <strong>Prioridade:</strong>
+                            <span class="badge @Model.GetPrioridadeBadgeClass(Model.Chamado.PrioridadeId) ms-2">
+                                @Model.Chamado.PrioridadeNome
+                            </span>
+                        </div>
+                        @if (!string.IsNullOrEmpty(Model.Chamado.Descricao))
+                        {
+                            <div class="col-12 mb-3">
+                                <strong>Descrição:</strong>
+                                <p class="mt-2">@Model.Chamado.Descricao</p>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Mensagens / Chat -->
+        <div class="col-12 mb-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="bi bi-chat-dots"></i> Mensagens / Chat
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div id="chatMessages" style="min-height: 300px; max-height: 500px; overflow-y: auto; background: var(--bg-secondary); border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+                        @if (Model.Interacoes != null && Model.Interacoes.Any())
+                        {
+                            @foreach (var interacao in Model.Interacoes.OrderBy(i => i.DataCriacao))
+                            {
+                                <div class="mb-3 p-3" style="background: var(--bg-primary); border-radius: 8px; border-left: 3px solid var(--accent-green);">
+                                    <div class="d-flex justify-content-between align-items-start mb-2">
+                                        <div>
+                                            <strong style="color: var(--accent-green);">
+                                                @(string.IsNullOrEmpty(interacao.AutorNome) ? "Usuário" : interacao.AutorNome)
+                                            </strong>
+                                            @if (interacao.IA_Gerada)
+                                            {
+                                                <span class="badge bg-info ms-2">IA</span>
+                                            }
+                                        </div>
+                                        <small class="text-muted">@interacao.DataCriacao.ToString("dd/MM/yyyy HH:mm")</small>
+                                    </div>
+                                    @if (!string.IsNullOrEmpty(interacao.Mensagem))
+                                    {
+                                        <p class="mb-0" style="white-space: pre-wrap;">@interacao.Mensagem</p>
+                                    }
+                                </div>
+                            }
+                        }
+                        else
+                        {
+                            <div class="text-center text-muted py-5">
+                                <i class="bi bi-chat-left-text" style="font-size: 3rem; opacity: 0.3;"></i>
+                                <p class="mt-3">Nenhuma mensagem ainda. Inicie a conversa!</p>
+                            </div>
+                        }
+                    </div>
+                    <div class="d-flex gap-2">
+                        <input type="text" id="mensagemInput" class="form-control" placeholder="Digite sua mensagem..." />
+                        <button type="button" id="btnEnviarMensagem" class="btn btn-primary">
+                            <i class="bi bi-send"></i> Enviar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Anexos -->
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="bi bi-paperclip"></i> Anexos
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <div class="d-flex gap-2 align-items-center flex-wrap">
+                            <input type="file" id="arquivoInput" class="form-control" style="max-width: 300px;" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.gif,.txt,.xls,.xlsx,.zip,.rar" />
+                            <span id="arquivoNome" class="text-muted">Nenhum arquivo escolhido</span>
+                            <button type="button" id="btnEnviarAnexo" class="btn btn-primary ms-auto">
+                                <i class="bi bi-upload"></i> Enviar Anexo
+                            </button>
+                        </div>
+                        <small class="text-muted d-block mt-2">
+                            Tamanho máximo: 10MB. Formatos permitidos: PDF, DOC, DOCX, JPG, PNG, GIF, TXT, XLS, XLSX, ZIP, RAR
+                        </small>
+                    </div>
+                    <div id="anexosList" style="min-height: 100px;">
+                        @if (Model.Anexos != null && Model.Anexos.Any())
+                        {
+                            <div class="list-group">
+                                @foreach (var anexo in Model.Anexos.OrderByDescending(a => a.DataCriacao))
+                                {
+                                    <div class="list-group-item" style="background: var(--bg-secondary); border-color: var(--border-color);">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <div>
+                                                <i class="bi bi-file-earmark me-2"></i>
+                                                <strong>@anexo.NomeArquivo</strong>
+                                                <small class="text-muted ms-2">(@Model.FormatFileSize(anexo.TamanhoBytes))</small>
+                                            </div>
+                                            <a href="/Chamados/Detalhes/@Model.Chamado.ChamadoId?handler=DownloadAnexo&anexoId=@anexo.AnexoId" class="btn btn-sm btn-outline-primary">
+                                                <i class="bi bi-download"></i> Download
+                                            </a>
+                                        </div>
+                                        <small class="text-muted">Enviado em @anexo.DataCriacao.ToString("dd/MM/yyyy HH:mm")</small>
+                                    </div>
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            <p class="text-muted">Nenhum anexo ainda.</p>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* Formulário oculto para gerar o anti-forgery token *@
+<form method="post" style="display: none;">
+    @Html.AntiForgeryToken()
+</form>
+
+@section Scripts {
+    <script>
+        const chamadoId = @(Model.Chamado?.ChamadoId ?? 0);
+        
+        // Função para obter o token anti-forgery
+        function getAntiForgeryToken() {
+            const tokenElement = document.querySelector('input[name="__RequestVerificationToken"]');
+            return tokenElement ? tokenElement.value : '';
+        }
+        
+        // Criar um endpoint na própria página para enviar mensagem
+        async function enviarMensagem(mensagem) {
+            const formData = new FormData();
+            formData.append('mensagem', mensagem);
+            formData.append('__RequestVerificationToken', getAntiForgeryToken());
+            
+            const response = await fetch(`/Chamados/Detalhes/${chamadoId}?handler=AdicionarInteracao`, {
+                method: 'POST',
+                body: formData
+            });
+            
+            return response;
+        }
+        
+        // Criar um endpoint na própria página para enviar anexo
+        async function enviarAnexo(arquivo) {
+            const formData = new FormData();
+            formData.append('arquivo', arquivo);
+            formData.append('__RequestVerificationToken', getAntiForgeryToken());
+            
+            const response = await fetch(`/Chamados/Detalhes/${chamadoId}?handler=UploadAnexo`, {
+                method: 'POST',
+                body: formData
+            });
+            
+            return response;
+        }
+
+        // Enviar mensagem
+        document.getElementById('btnEnviarMensagem')?.addEventListener('click', async function() {
+            const input = document.getElementById('mensagemInput');
+            const mensagem = input?.value?.trim();
+            
+            if (!mensagem) {
+                alert('Por favor, digite uma mensagem.');
+                return;
+            }
+
+            const btn = this;
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Enviando...';
+
+            try {
+                const response = await enviarMensagem(mensagem);
+
+                if (response.ok || response.redirected) {
+                    input.value = '';
+                    location.reload();
+                } else {
+                    const errorText = await response.text();
+                    let errorMessage = 'Erro ao enviar mensagem. Tente novamente.';
+                    try {
+                        const error = JSON.parse(errorText);
+                        errorMessage = error.message || errorMessage;
+                    } catch {
+                        errorMessage = errorText || errorMessage;
+                    }
+                    alert(errorMessage);
+                }
+            } catch (error) {
+                console.error('Erro:', error);
+                alert('Erro ao enviar mensagem. Tente novamente.');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-send"></i> Enviar';
+            }
+        });
+
+        // Enter para enviar mensagem
+        document.getElementById('mensagemInput')?.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                document.getElementById('btnEnviarMensagem')?.click();
+            }
+        });
+
+        // Upload de anexo
+        document.getElementById('arquivoInput')?.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            const nomeSpan = document.getElementById('arquivoNome');
+            if (file && nomeSpan) {
+                nomeSpan.textContent = file.name;
+            } else if (nomeSpan) {
+                nomeSpan.textContent = 'Nenhum arquivo escolhido';
+            }
+        });
+
+        document.getElementById('btnEnviarAnexo')?.addEventListener('click', async function() {
+            const input = document.getElementById('arquivoInput');
+            const file = input?.files[0];
+            
+            if (!file) {
+                alert('Por favor, selecione um arquivo.');
+                return;
+            }
+
+            // Validar tamanho (10MB)
+            if (file.size > 10 * 1024 * 1024) {
+                alert('Arquivo muito grande. Tamanho máximo: 10MB');
+                return;
+            }
+
+            const btn = this;
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Enviando...';
+
+            try {
+                const response = await enviarAnexo(file);
+
+                if (response.ok || response.redirected) {
+                    input.value = '';
+                    document.getElementById('arquivoNome').textContent = 'Nenhum arquivo escolhido';
+                    location.reload();
+                } else {
+                    const errorText = await response.text();
+                    let errorMessage = 'Erro ao enviar anexo. Tente novamente.';
+                    try {
+                        const error = JSON.parse(errorText);
+                        errorMessage = error.message || errorMessage;
+                    } catch {
+                        errorMessage = errorText || errorMessage;
+                    }
+                    alert(errorMessage);
+                }
+            } catch (error) {
+                console.error('Erro:', error);
+                alert('Erro ao enviar anexo. Tente novamente.');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-upload"></i> Enviar Anexo';
+            }
+        });
+
+        // Scroll automático para a última mensagem
+        const chatMessages = document.getElementById('chatMessages');
+        if (chatMessages) {
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+    </script>
+}
+
