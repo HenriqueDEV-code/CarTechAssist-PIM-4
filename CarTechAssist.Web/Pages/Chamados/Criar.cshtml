@@ -4,6 +4,7 @@
     ViewData["Title"] = "Novo Chamado";
 }
 
+@* Cabeçalho da página com título e botão de voltar *@
 <div class="row mb-4">
     <div class="col-12">
         <div class="d-flex justify-content-between align-items-center">
@@ -22,6 +23,7 @@
     </div>
 </div>
 
+@* Exibe mensagem de sucesso se houver (após redirecionamento ou ação bem-sucedida) *@
 @if (!string.IsNullOrEmpty(Model.SuccessMessage))
 {
     <div class="alert alert-success alert-dismissible fade show" role="alert">
@@ -30,6 +32,7 @@
     </div>
 }
 
+@* Exibe mensagem de erro se houver problemas na validação ou criação do chamado *@
 @if (!string.IsNullOrEmpty(Model.ErrorMessage))
 {
     <div class="alert alert-danger" role="alert">
@@ -44,13 +47,16 @@
                 <h5 class="mb-0">Informações do Chamado</h5>
             </div>
             <div class="card-body">
+                @* Formulário principal para criação do chamado *@
                 <form method="post" id="formCriarChamado" novalidate>
+                    @* Campo: Título do chamado (obrigatório, máximo 200 caracteres) *@
                     <div class="mb-3">
                         <label asp-for="ChamadoRequest.Titulo" class="form-label">Título <span class="text-danger">*</span></label>
                         <input asp-for="ChamadoRequest.Titulo" class="form-control" required maxlength="200" placeholder="Digite o título do chamado..." />
                         <span asp-validation-for="ChamadoRequest.Titulo" class="text-danger"></span>
                     </div>
 
+                    @* Campo: Descrição do chamado (obrigatório, máximo 10.000 caracteres) *@
                     <div class="mb-3">
                         <label asp-for="ChamadoRequest.Descricao" class="form-label">Descrição <span class="text-danger">*</span></label>
                         <textarea asp-for="ChamadoRequest.Descricao" class="form-control" rows="5" required maxlength="10000" placeholder="Descreva o problema ou solicitação em detalhes..."></textarea>
@@ -58,7 +64,9 @@
                         <small class="form-text text-muted">Máximo de 10.000 caracteres</small>
                     </div>
 
+                    @* Linha com Categoria e Prioridade *@
                     <div class="row">
+                        @* Campo: Categoria do chamado (obrigatório, carregado do banco de dados) *@
                         <div class="col-md-6 mb-3">
                             <label asp-for="ChamadoRequest.CategoriaId" class="form-label">Categoria <span class="text-danger">*</span></label>
                             <select asp-for="ChamadoRequest.CategoriaId" class="form-select" required>
@@ -78,6 +86,7 @@
                             <span asp-validation-for="ChamadoRequest.CategoriaId" class="text-danger"></span>
                         </div>
 
+                        @* Campo: Prioridade do chamado (obrigatório, valores fixos: 1=Baixa, 2=Média, 3=Alta, 4=Urgente) *@
                         <div class="col-md-6 mb-3">
                             <label asp-for="ChamadoRequest.PrioridadeId" class="form-label">Prioridade <span class="text-danger">*</span></label>
                             <select asp-for="ChamadoRequest.PrioridadeId" class="form-select" required>
@@ -89,7 +98,9 @@
                         </div>
                     </div>
 
+                    @* Linha com Canal e SLA Estimado *@
                     <div class="row">
+                        @* Campo: Canal de origem do chamado (obrigatório, valores fixos: 1=Web, 2=Desktop, 3=Mobile) *@
                         <div class="col-md-6 mb-3">
                             <label asp-for="ChamadoRequest.CanalId" class="form-label">Canal <span class="text-danger">*</span></label>
                             <select asp-for="ChamadoRequest.CanalId" class="form-select" required>
@@ -99,6 +110,7 @@
                             </select>
                         </div>
 
+                        @* Campo: SLA Estimado (somente leitura, calculado automaticamente via JavaScript baseado na prioridade) *@
                         <div class="col-md-6 mb-3">
                             <label class="form-label">SLA Estimado</label>
                             <input type="text" class="form-control" id="slaEstimado" readonly style="background-color: #e9ecef;">
@@ -106,10 +118,12 @@
                         </div>
                     </div>
 
-                    @* Campos para Técnico/Admin: Seleção de Solicitante e Responsável *@
+                    @* Seção condicional: Campos visíveis apenas para Técnico (2) ou Admin (3) *@
+                    @* Permite que Técnicos/Admins selecionem qualquer usuário como solicitante e atribuam responsável *@
                     @if (Model.TipoUsuarioId == 2 || Model.TipoUsuarioId == 3)
                     {
                         <div class="row">
+                            @* Campo: Seleção de Solicitante (obrigatório para Técnico/Admin, lista todos os usuários ativos) *@
                             <div class="col-md-6 mb-3">
                                 <label asp-for="ChamadoRequest.SolicitanteUsuarioId" class="form-label">Solicitante <span class="text-danger">*</span></label>
                                 <select asp-for="ChamadoRequest.SolicitanteUsuarioId" class="form-select" required>
@@ -130,6 +144,7 @@
                                 <small class="form-text text-muted">Selecione o usuário que está solicitando o chamado</small>
                             </div>
 
+                            @* Campo: Seleção de Responsável (opcional para Técnico/Admin, lista apenas técnicos ativos) *@
                             <div class="col-md-6 mb-3">
                                 <label asp-for="ChamadoRequest.ResponsavelUsuarioId" class="form-label">Responsável</label>
                                 <select asp-for="ChamadoRequest.ResponsavelUsuarioId" class="form-select">
@@ -153,11 +168,12 @@
                     }
                     else
                     {
-                        @* Cliente: campos hidden *@
+                        @* Cliente: Campos hidden - O solicitante é automaticamente o próprio usuário logado *@
                         <input type="hidden" asp-for="ChamadoRequest.SolicitanteUsuarioId" />
                         <input type="hidden" asp-for="ChamadoRequest.ResponsavelUsuarioId" />
                     }
 
+                    @* Botões de ação: Cancelar (volta para lista) e Criar Chamado (submete o formulário) *@
                     <div class="d-flex justify-content-between">
                         <a href="/Chamados" class="btn btn-secondary">Cancelar</a>
                         <button type="submit" class="btn btn-primary">
@@ -171,21 +187,29 @@
 </div>
 
 @section Scripts {
+    @* Renderiza os scripts de validação do ASP.NET Core (jQuery Validation) *@
     @{
         await Html.RenderPartialAsync("_ValidationScriptsPartial");
     }
     <script>
-
+        @* Script executado quando a página é carregada *@
         document.addEventListener('DOMContentLoaded', function() {
+            // Referências aos elementos do formulário
             const form = document.getElementById('formCriarChamado');
             const categoriaSelect = document.querySelector('select[name="ChamadoRequest.CategoriaId"]');
             const prioridadeSelect = document.querySelector('select[name="ChamadoRequest.PrioridadeId"]');
             const slaEstimadoInput = document.getElementById('slaEstimado');
 
+            /**
+             * Calcula a data/hora estimada de conclusão do SLA baseado na prioridade selecionada.
+             * @param {string|number} prioridadeId - ID da prioridade (1=Baixa, 2=Média, 3=Alta, 4=Urgente)
+             * @returns {string} Data/hora formatada no formato: YYYY-MM-DD HH:mm:ss.mmm
+             */
             function calcularSLA(prioridadeId) {
                 const agora = new Date();
                 let horas = 48; // Padrão: Média
 
+                // Define as horas de SLA baseado na prioridade
                 switch(parseInt(prioridadeId)) {
                     case 1: horas = 72; break; // Baixa: 72 horas (3 dias)
                     case 2: horas = 48; break; // Média: 48 horas (2 dias)
@@ -193,8 +217,10 @@
                     case 4: horas = 4; break;  // Urgente: 4 horas
                 }
 
+                // Calcula a data estimada adicionando as horas à data atual
                 const dataEstimada = new Date(agora.getTime() + (horas * 60 * 60 * 1000));
 
+                // Formata a data no formato esperado pelo backend (YYYY-MM-DD HH:mm:ss.mmm)
                 const ano = dataEstimada.getUTCFullYear();
                 const mes = String(dataEstimada.getUTCMonth() + 1).padStart(2, '0');
                 const dia = String(dataEstimada.getUTCDate()).padStart(2, '0');
@@ -206,22 +232,32 @@
                 return `${ano}-${mes}-${dia} ${hora}:${minuto}:${segundo}.${milissegundo}`;
             }
 
+            // Atualiza o campo SLA Estimado quando a prioridade é alterada
             if (prioridadeSelect && slaEstimadoInput) {
+                /**
+                 * Função que atualiza o valor do campo SLA Estimado baseado na prioridade atual.
+                 */
                 function atualizarSLA() {
                     slaEstimadoInput.value = calcularSLA(prioridadeSelect.value);
                 }
 
-                atualizarSLA(); // Calcular inicial
-                prioridadeSelect.addEventListener('change', atualizarSLA);
+                atualizarSLA(); // Calcula o SLA inicial ao carregar a página
+                prioridadeSelect.addEventListener('change', atualizarSLA); // Atualiza quando a prioridade muda
             }
 
+            // Validação customizada do formulário antes do submit
             if (form) {
+                /**
+                 * Event listener para validação customizada antes de submeter o formulário.
+                 * Valida campos que podem não ser capturados pela validação padrão do HTML5.
+                 */
                 form.addEventListener('submit', function(e) {
-
+                    // Validação: Categoria deve ser selecionada (não pode ser vazia ou 0)
                     if (categoriaSelect && (categoriaSelect.value === '' || categoriaSelect.value === '0')) {
-                        e.preventDefault();
-                        categoriaSelect.classList.add('is-invalid');
+                        e.preventDefault(); // Impede o envio do formulário
+                        categoriaSelect.classList.add('is-invalid'); // Adiciona classe de erro visual
                         const errorSpan = categoriaSelect.nextElementSibling;
+                        // Atualiza ou cria a mensagem de erro
                         if (errorSpan && errorSpan.classList.contains('text-danger')) {
                             errorSpan.textContent = 'Categoria é obrigatória. Selecione uma categoria.';
                         } else {
@@ -230,10 +266,11 @@
                             newError.textContent = 'Categoria é obrigatória. Selecione uma categoria.';
                             categoriaSelect.parentElement.appendChild(newError);
                         }
-                        categoriaSelect.focus();
+                        categoriaSelect.focus(); // Foca no campo com erro
                         return false;
                     }
 
+                    // Validação: Descrição não pode estar vazia (apenas espaços em branco)
                     const descricao = document.querySelector('textarea[name="ChamadoRequest.Descricao"]');
                     if (descricao && !descricao.value.trim()) {
                         e.preventDefault();
@@ -242,9 +279,10 @@
                         return false;
                     }
 
+                    // Validação: Solicitante deve ser selecionado (apenas se o campo estiver visível - Técnico/Admin)
                     const solicitanteSelect = document.querySelector('select[name="ChamadoRequest.SolicitanteUsuarioId"]');
                     if (solicitanteSelect && solicitanteSelect.offsetParent !== null) {
-
+                        // offsetParent !== null verifica se o elemento está visível
                         if (solicitanteSelect.value === '' || solicitanteSelect.value === '0') {
                             e.preventDefault();
                             solicitanteSelect.classList.add('is-invalid');
@@ -254,11 +292,13 @@
                     }
                 });
 
+                // Remove a classe de erro quando o usuário seleciona uma categoria válida
                 if (categoriaSelect) {
                     categoriaSelect.addEventListener('change', function() {
                         if (this.value && this.value !== '0') {
                             this.classList.remove('is-invalid');
                             const errorSpan = this.nextElementSibling;
+                            // Limpa a mensagem de erro se existir
                             if (errorSpan && errorSpan.classList.contains('text-danger')) {
                                 errorSpan.textContent = '';
                             }
