@@ -171,7 +171,9 @@
 </div>
 
 @section Scripts {
-    @{await Html.RenderPartialAsync("_ValidationScriptsPartial");}
+    @{
+        await Html.RenderPartialAsync("_ValidationScriptsPartial");
+    }
     <script>
 
         document.addEventListener('DOMContentLoaded', function() {
@@ -183,14 +185,14 @@
             function calcularSLA(prioridadeId) {
                 const agora = new Date();
                 let horas = 48; // Padrão: Média
-                
+
                 switch(parseInt(prioridadeId)) {
                     case 1: horas = 72; break; // Baixa: 72 horas (3 dias)
                     case 2: horas = 48; break; // Média: 48 horas (2 dias)
                     case 3: horas = 24; break; // Alta: 24 horas (1 dia)
                     case 4: horas = 4; break;  // Urgente: 4 horas
                 }
-                
+
                 const dataEstimada = new Date(agora.getTime() + (horas * 60 * 60 * 1000));
 
                 const ano = dataEstimada.getUTCFullYear();
@@ -200,7 +202,7 @@
                 const minuto = String(dataEstimada.getUTCMinutes()).padStart(2, '0');
                 const segundo = String(dataEstimada.getUTCSeconds()).padStart(2, '0');
                 const milissegundo = String(dataEstimada.getUTCMilliseconds()).padStart(3, '0');
-                
+
                 return `${ano}-${mes}-${dia} ${hora}:${minuto}:${segundo}.${milissegundo}`;
             }
 
@@ -208,11 +210,11 @@
                 function atualizarSLA() {
                     slaEstimadoInput.value = calcularSLA(prioridadeSelect.value);
                 }
-                
+
                 atualizarSLA(); // Calcular inicial
                 prioridadeSelect.addEventListener('change', atualizarSLA);
             }
-            
+
             if (form) {
                 form.addEventListener('submit', function(e) {
 
