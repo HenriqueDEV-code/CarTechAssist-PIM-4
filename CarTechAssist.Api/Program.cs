@@ -29,9 +29,19 @@ namespace CarTechAssist.Api
             var builder = WebApplication.CreateBuilder(args);
             var configuration = builder.Configuration;
 
-            // Database Connection
+            // Database Connection - Melhorado para garantir fechamento adequado
             builder.Services.AddScoped<IDbConnection>(sp =>
-                new SqlConnection(configuration.GetConnectionString("DefaultConnection")));
+            {
+                var connectionString = configuration.GetConnectionString("DefaultConnection");
+                if (string.IsNullOrWhiteSpace(connectionString))
+                {
+                    throw new InvalidOperationException("Connection string 'DefaultConnection' não configurada.");
+                }
+                var connection = new SqlConnection(connectionString);
+                // A conexão será fechada automaticamente quando o scope for descartado
+                // pois IDbConnection implementa IDisposable e será descartado pelo container DI
+                return connection;
+            });
 
             // Repositories
             builder.Services.AddScoped<IChamadosRepository, ChamadosRepository>();
@@ -62,7 +72,24 @@ namespace CarTechAssist.Api
             builder.Services.AddHostedService<RefreshTokenCleanupService>();
 
             // JWT Authentication
-            var jwtSecretKey = configuration["Jwt:SecretKey"] ?? throw new InvalidOperationException("JWT SecretKey não configurada");
+            var jwtSecretKey = configuration["Jwt:SecretKey"];
+            if (string.IsNullOrWhiteSpace(jwtSecretKey))
+            {
+                throw new InvalidOperationException(
+                    "JWT SecretKey não configurada ou está vazia. " +
+                    "Configure uma chave secreta válida no appsettings.json na seção 'Jwt:SecretKey'. " +
+                    "A chave deve ter pelo menos 32 caracteres para segurança adequada.");
+            }
+
+            // Validar comprimento mínimo da chave (32 bytes = 256 bits para HMAC-SHA256)
+            if (Encoding.UTF8.GetByteCount(jwtSecretKey) < 32)
+            {
+                throw new InvalidOperationException(
+                    $"JWT SecretKey deve ter pelo menos 32 caracteres (bytes). " +
+                    $"Chave atual tem {Encoding.UTF8.GetByteCount(jwtSecretKey)} bytes. " +
+                    "Configure uma chave secreta mais longa no appsettings.json.");
+            }
+
             var jwtIssuer = configuration["Jwt:Issuer"] ?? "CarTechAssist";
             var jwtAudience = configuration["Jwt:Audience"] ?? "CarTechAssist";
 
@@ -255,14 +282,17 @@ namespace CarTechAssist.Api
             // Rate Limiting
             app.UseIpRateLimiting();
 
-            // Tenant Middleware
-            app.UseTenantMiddleware();
-
             // CORS deve vir antes de UseAuthentication/UseAuthorization
             app.UseCors("AllowSpecificOrigins");
 
+            // Autenticação e Autorização DEVEM vir ANTES do TenantMiddleware
+            // para que o JWT seja validado e o User.Identity esteja disponível
             app.UseAuthentication();
             app.UseAuthorization();
+
+            // Tenant Middleware - DEVE vir DEPOIS da autenticação
+            // para poder acessar o User.Identity e claims do JWT
+            app.UseTenantMiddleware();
 
             app.MapControllers();
 

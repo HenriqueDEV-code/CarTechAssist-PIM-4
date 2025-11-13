@@ -46,31 +46,45 @@ namespace CarTechAssist.Api.Controllers
             [FromBody] RefreshTokenRequest request,
             CancellationToken ct = default)
         {
-            var result = await _authService.RenovarTokenAsync(request.RefreshToken, ct);
-            if (result == null)
-                return Unauthorized("Refresh token inválido ou expirado.");
+            try
+            {
+                var result = await _authService.RenovarTokenAsync(request.RefreshToken, ct);
+                if (result == null)
+                    return Unauthorized(new { message = "Refresh token inválido ou expirado." });
 
-            return Ok(result);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Erro ao renovar token.", error = ex.Message });
+            }
         }
 
         [HttpGet("me")]
         [Authorize]
         public async Task<ActionResult<UsuarioLogadoDto>> Me(CancellationToken ct = default)
         {
-            var tenantIdHeader = Request.Headers["X-Tenant-Id"].FirstOrDefault();
-            var usuarioIdHeader = Request.Headers["X-Usuario-Id"].FirstOrDefault();
+            try
+            {
+                var tenantIdHeader = Request.Headers["X-Tenant-Id"].FirstOrDefault();
+                var usuarioIdHeader = Request.Headers["X-Usuario-Id"].FirstOrDefault();
 
-            if (string.IsNullOrEmpty(tenantIdHeader) || !int.TryParse(tenantIdHeader, out var tenantId))
-                return Unauthorized("TenantId não encontrado ou inválido no header X-Tenant-Id.");
+                if (string.IsNullOrEmpty(tenantIdHeader) || !int.TryParse(tenantIdHeader, out var tenantId))
+                    return Unauthorized(new { message = "TenantId não encontrado ou inválido no header X-Tenant-Id." });
 
-            if (string.IsNullOrEmpty(usuarioIdHeader) || !int.TryParse(usuarioIdHeader, out var usuarioId))
-                return Unauthorized("UsuarioId não encontrado ou inválido no header X-Usuario-Id.");
+                if (string.IsNullOrEmpty(usuarioIdHeader) || !int.TryParse(usuarioIdHeader, out var usuarioId))
+                    return Unauthorized(new { message = "UsuarioId não encontrado ou inválido no header X-Usuario-Id." });
 
-            var result = await _authService.ObterUsuarioLogadoAsync(tenantId, usuarioId, ct);
-            if (result == null)
-                return NotFound("Usuário não encontrado.");
+                var result = await _authService.ObterUsuarioLogadoAsync(tenantId, usuarioId, ct);
+                if (result == null)
+                    return NotFound(new { message = "Usuário não encontrado." });
 
-            return Ok(result);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Erro ao obter dados do usuário.", error = ex.Message });
+            }
         }
     }
 }

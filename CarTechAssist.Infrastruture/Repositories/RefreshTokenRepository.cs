@@ -16,6 +16,12 @@ namespace CarTechAssist.Infrastruture.Repositories
 
         public async Task<RefreshToken?> ObterPorTokenAsync(string token, CancellationToken ct)
         {
+            // Garantir que a conexão está aberta
+            if (_db.State != ConnectionState.Open)
+            {
+                _db.Open();
+            }
+
             const string sql = @"
                 SELECT RefreshTokenId, UsuarioId, Token, ExpiraEm, Revogado, 
                        DataCriacao, DataRevogacao, IpAddress, UserAgent
@@ -28,6 +34,12 @@ namespace CarTechAssist.Infrastruture.Repositories
 
         public async Task<RefreshToken> CriarAsync(RefreshToken refreshToken, CancellationToken ct)
         {
+            // Garantir que a conexão está aberta
+            if (_db.State != ConnectionState.Open)
+            {
+                _db.Open();
+            }
+
             const string sql = @"
                 INSERT INTO core.RefreshToken 
                     (UsuarioId, Token, ExpiraEm, Revogado, DataCriacao, IpAddress, UserAgent)
@@ -44,6 +56,12 @@ namespace CarTechAssist.Infrastruture.Repositories
 
         public async Task RevogarAsync(long refreshTokenId, CancellationToken ct)
         {
+            // Garantir que a conexão está aberta
+            if (_db.State != ConnectionState.Open)
+            {
+                _db.Open();
+            }
+
             const string sql = @"
                 UPDATE core.RefreshToken 
                 SET Revogado = 1, DataRevogacao = GETDATE()
@@ -55,6 +73,12 @@ namespace CarTechAssist.Infrastruture.Repositories
 
         public async Task RevogarTodosDoUsuarioAsync(int usuarioId, CancellationToken ct)
         {
+            // Garantir que a conexão está aberta
+            if (_db.State != ConnectionState.Open)
+            {
+                _db.Open();
+            }
+
             const string sql = @"
                 UPDATE core.RefreshToken 
                 SET Revogado = 1, DataRevogacao = GETDATE()
@@ -66,6 +90,12 @@ namespace CarTechAssist.Infrastruture.Repositories
 
         public async Task LimparExpiradosAsync(CancellationToken ct)
         {
+            // Garantir que a conexão está aberta
+            if (_db.State != ConnectionState.Open)
+            {
+                _db.Open();
+            }
+
             const string sql = @"
                 DELETE FROM core.RefreshToken 
                 WHERE ExpiraEm < DATEADD(day, -30, GETDATE())";

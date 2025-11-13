@@ -16,6 +16,12 @@ namespace CarTechAssist.Infrastruture.Repositories
 
         public async Task<IReadOnlyList<CategoriaChamado>> ListarAtivasAsync(int tenantId, CancellationToken ct)
         {
+            // Garantir que a conexão está aberta
+            if (_db.State != ConnectionState.Open)
+            {
+                _db.Open();
+            }
+
             const string sql = @"
                 SELECT * FROM ref.CategoriaChamado 
                 WHERE TenantId = @tenantId AND Ativo = 1 AND Excluido = 0

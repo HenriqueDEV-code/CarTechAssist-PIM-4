@@ -16,6 +16,11 @@ namespace CarTechAssist.Infrastruture.Repositories
 
         public async Task<Chamado?> ObterAsync(long chamadoId, CancellationToken ct)
         {
+            // Garantir que a conexão está aberta
+            if (_db.State != ConnectionState.Open)
+            {
+                _db.Open();
+            }
 
             const string sql = @"
                 SELECT * FROM core.vw_chamados 
@@ -34,6 +39,11 @@ namespace CarTechAssist.Infrastruture.Repositories
             int pageSize,
             CancellationToken ct)
         {
+            // Garantir que a conexão está aberta
+            if (_db.State != ConnectionState.Open)
+            {
+                _db.Open();
+            }
 
             var offset = (page - 1) * pageSize;
 
@@ -260,12 +270,15 @@ namespace CarTechAssist.Infrastruture.Repositories
             int? solicitanteUsuarioId,
             CancellationToken ct)
         {
+            // Garantir que a conexão está aberta
+            if (_db.State != ConnectionState.Open)
+            {
+                _db.Open();
+            }
 
             var parameters = new DynamicParameters();
             parameters.Add("tenantId", tenantId);
-
             parameters.Add("solicitanteUsuarioId", solicitanteUsuarioId);
-
 
             const string sql = @"
                 SELECT 

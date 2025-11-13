@@ -15,6 +15,12 @@ namespace CarTechAssist.Infrastruture.Repositories
 
         public async Task<Domain.Entities.RecuperacaoSenha?> ObterPorCodigoAsync(string codigo, CancellationToken ct)
         {
+            // Garantir que a conexão está aberta
+            if (_db.State != ConnectionState.Open)
+            {
+                _db.Open();
+            }
+
             var sql = @"
                 SELECT TOP 1
                     RecuperacaoSenhaId,
@@ -35,6 +41,12 @@ namespace CarTechAssist.Infrastruture.Repositories
 
         public async Task<Domain.Entities.RecuperacaoSenha?> ObterPorUsuarioAsync(int tenantId, int usuarioId, CancellationToken ct)
         {
+            // Garantir que a conexão está aberta
+            if (_db.State != ConnectionState.Open)
+            {
+                _db.Open();
+            }
+
             var sql = @"
                 SELECT TOP 1
                     RecuperacaoSenhaId,
@@ -59,6 +71,12 @@ namespace CarTechAssist.Infrastruture.Repositories
 
         public async Task<long> CriarAsync(Domain.Entities.RecuperacaoSenha recuperacao, CancellationToken ct)
         {
+            // Garantir que a conexão está aberta
+            if (_db.State != ConnectionState.Open)
+            {
+                _db.Open();
+            }
+
             var sql = @"
                 INSERT INTO core.RecuperacaoSenha 
                     (TenantId, UsuarioId, Codigo, Email, DataExpiracao, Usado, DataCriacao)
@@ -73,6 +91,12 @@ namespace CarTechAssist.Infrastruture.Repositories
 
         public async Task MarcarComoUsadoAsync(long recuperacaoSenhaId, CancellationToken ct)
         {
+            // Garantir que a conexão está aberta
+            if (_db.State != ConnectionState.Open)
+            {
+                _db.Open();
+            }
+
             var sql = @"
                 UPDATE core.RecuperacaoSenha
                 SET Usado = 1, DataUso = GETDATE()
@@ -84,6 +108,12 @@ namespace CarTechAssist.Infrastruture.Repositories
 
         public async Task LimparExpiradasAsync(int tenantId, CancellationToken ct)
         {
+            // Garantir que a conexão está aberta
+            if (_db.State != ConnectionState.Open)
+            {
+                _db.Open();
+            }
+
             var sql = @"
                 DELETE FROM core.RecuperacaoSenha
                 WHERE TenantId = @TenantId 

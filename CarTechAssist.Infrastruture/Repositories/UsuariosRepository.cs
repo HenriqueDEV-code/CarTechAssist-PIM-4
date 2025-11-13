@@ -16,6 +16,12 @@ namespace CarTechAssist.Infrastruture.Repositories
 
         public async Task<Usuario?> ObterPorLoginAsync(int tenantId, string login, CancellationToken ct)
         {
+            // Garantir que a conexão está aberta
+            if (_db.State != ConnectionState.Open)
+            {
+                _db.Open();
+            }
+
             const string sql = @"
                 SELECT * FROM core.Usuario 
                 WHERE TenantId = @tenantId AND Login = @login AND Excluido = 0";
@@ -26,6 +32,12 @@ namespace CarTechAssist.Infrastruture.Repositories
 
         public async Task<Usuario?> ObterPorIdAsync(int usuarioId, CancellationToken ct)
         {
+            // Garantir que a conexão está aberta
+            if (_db.State != ConnectionState.Open)
+            {
+                _db.Open();
+            }
+
             const string sql = @"
                 SELECT * FROM core.Usuario 
                 WHERE UsuarioId = @usuarioId AND Excluido = 0";
@@ -42,44 +54,66 @@ namespace CarTechAssist.Infrastruture.Repositories
             int pageSize,
             CancellationToken ct)
         {
-            var offset = (page - 1) * pageSize;
-
-            var whereConditions = new List<string> { "TenantId = @tenantId", "Excluido = 0" };
-            var parameters = new DynamicParameters();
-            parameters.Add("tenantId", tenantId);
-            parameters.Add("offset", offset);
-            parameters.Add("pageSize", pageSize);
-
-            if (tipoUsuarioId.HasValue)
+            try
             {
-                whereConditions.Add("TipoUsuarioId = @tipoUsuarioId");
-                parameters.Add("tipoUsuarioId", tipoUsuarioId.Value);
-            }
+                // Garantir que a conexão está aberta
+                if (_db.State != ConnectionState.Open)
+                {
+                    _db.Open();
+                }
 
-            if (ativo.HasValue)
+                var offset = (page - 1) * pageSize;
+
+                // CORREÇÃO: Construir SQL de forma segura para evitar SQL Injection
+                // Usar apenas valores hardcoded e seguros para construir a query
+                var whereConditions = new List<string> { "TenantId = @tenantId", "Excluido = 0" };
+                var parameters = new DynamicParameters();
+                parameters.Add("tenantId", tenantId);
+                parameters.Add("offset", offset);
+                parameters.Add("pageSize", pageSize);
+
+                // Adicionar condições apenas com valores validados
+                if (tipoUsuarioId.HasValue)
+                {
+                    // Validar que o valor está no range válido (1-4)
+                    if (tipoUsuarioId.Value >= 1 && tipoUsuarioId.Value <= 4)
+                    {
+                        whereConditions.Add("TipoUsuarioId = @tipoUsuarioId");
+                        parameters.Add("tipoUsuarioId", tipoUsuarioId.Value);
+                    }
+                }
+
+                if (ativo.HasValue)
+                {
+                    whereConditions.Add("Ativo = @ativo");
+                    parameters.Add("ativo", ativo.Value);
+                }
+
+                // Construir WHERE clause de forma segura (apenas strings hardcoded)
+                var whereClause = string.Join(" AND ", whereConditions);
+
+                // SQL fixo com parâmetros - seguro contra SQL Injection
+                var sql = $@"
+                    SELECT * FROM core.Usuario 
+                    WHERE {whereClause}
+                    ORDER BY NomeCompleto
+                    OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY;
+
+                    SELECT COUNT(*) FROM core.Usuario 
+                    WHERE {whereClause}";
+
+                using var multi = await _db.QueryMultipleAsync(
+                    new CommandDefinition(sql, parameters, cancellationToken: ct));
+
+                var items = (await multi.ReadAsync<Usuario>()).ToList();
+                var total = await multi.ReadSingleAsync<int>();
+
+                return (items, total);
+            }
+            catch (Exception ex)
             {
-                whereConditions.Add("Ativo = @ativo");
-                parameters.Add("ativo", ativo.Value);
+                throw new InvalidOperationException($"Erro ao listar usuários no banco de dados. TenantId: {tenantId}, Erro: {ex.Message}", ex);
             }
-
-            var whereClause = string.Join(" AND ", whereConditions);
-
-            var sql = $@"
-                SELECT * FROM core.Usuario 
-                WHERE {whereClause}
-                ORDER BY NomeCompleto
-                OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY;
-
-                SELECT COUNT(*) FROM core.Usuario 
-                WHERE {whereClause}";
-
-            using var multi = await _db.QueryMultipleAsync(
-                new CommandDefinition(sql, parameters, cancellationToken: ct));
-
-            var items = (await multi.ReadAsync<Usuario>()).ToList();
-            var total = await multi.ReadSingleAsync<int>();
-
-            return (items, total);
         }
 
         public async Task<Usuario> CriarAsync(Usuario usuario, CancellationToken ct)
@@ -116,6 +150,12 @@ namespace CarTechAssist.Infrastruture.Repositories
 
         public async Task<Usuario> AtualizarAsync(Usuario usuario, CancellationToken ct)
         {
+            // Garantir que a conexão está aberta
+            if (_db.State != ConnectionState.Open)
+            {
+                _db.Open();
+            }
+
             const string sql = @"
                 UPDATE core.Usuario 
                 SET NomeCompleto = @NomeCompleto,
@@ -133,6 +173,12 @@ namespace CarTechAssist.Infrastruture.Repositories
 
         public async Task AlterarAtivacaoAsync(int usuarioId, bool ativo, CancellationToken ct)
         {
+            // Garantir que a conexão está aberta
+            if (_db.State != ConnectionState.Open)
+            {
+                _db.Open();
+            }
+
             const string sql = @"
                 UPDATE core.Usuario 
                 SET Ativo = @ativo
@@ -144,6 +190,12 @@ namespace CarTechAssist.Infrastruture.Repositories
 
         public async Task AtualizarSenhaAsync(int usuarioId, byte[] hash, byte[] salt, CancellationToken ct)
         {
+            // Garantir que a conexão está aberta
+            if (_db.State != ConnectionState.Open)
+            {
+                _db.Open();
+            }
+
             const string sql = @"
                 UPDATE core.Usuario 
                 SET HashSenha = @hash,
@@ -157,6 +209,12 @@ namespace CarTechAssist.Infrastruture.Repositories
 
         public async Task<bool> ExisteLoginAsync(int tenantId, string login, CancellationToken ct)
         {
+            // Garantir que a conexão está aberta
+            if (_db.State != ConnectionState.Open)
+            {
+                _db.Open();
+            }
+
             const string sql = @"
                 SELECT COUNT(*) FROM core.Usuario 
                 WHERE TenantId = @tenantId AND Login = @login AND Excluido = 0";

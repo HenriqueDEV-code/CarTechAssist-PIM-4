@@ -222,8 +222,22 @@ namespace CarTechAssist.Api.Controllers
             long id,
             CancellationToken ct = default)
         {
-            var result = await _chamadosService.ListarInteracoesAsync(id, GetTenantId(), ct);
-            return Ok(result);
+            var logger = HttpContext.RequestServices.GetRequiredService<ILogger<ChamadosController>>();
+            try
+            {
+                var result = await _chamadosService.ListarInteracoesAsync(id, GetTenantId(), ct);
+                return Ok(result);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                logger.LogError(ex, "Erro de autorização ao listar interações do chamado {ChamadoId}", id);
+                return StatusCode(403, new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Erro ao listar interações do chamado {ChamadoId}", id);
+                return StatusCode(500, new { message = "Erro ao listar interações.", error = ex.Message });
+            }
         }
 
         [HttpPost("{id:long}/interacoes")]
@@ -233,19 +247,41 @@ namespace CarTechAssist.Api.Controllers
             [FromBody] AdicionarInteracaoRequest request,
             CancellationToken ct = default)
         {
-            var result = await _chamadosService.AdicionarInteracaoAsync(
-                GetTenantId(), id, GetUsuarioId(), request, ct);
-            return Ok(result);
+            var logger = HttpContext.RequestServices.GetRequiredService<ILogger<ChamadosController>>();
+            try
+            {
+                var result = await _chamadosService.AdicionarInteracaoAsync(
+                    GetTenantId(), id, GetUsuarioId(), request, ct);
+                return Ok(result);
+            }
+            catch (ArgumentException ex)
+            {
+                logger.LogWarning(ex, "Erro de validação ao adicionar interação ao chamado {ChamadoId}", id);
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                logger.LogError(ex, "Erro de autorização ao adicionar interação ao chamado {ChamadoId}", id);
+                return StatusCode(403, new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Erro ao adicionar interação ao chamado {ChamadoId}", id);
+                return StatusCode(500, new { message = "Erro ao adicionar interação.", error = ex.Message });
+            }
         }
 
         [HttpPost("{id:long}/anexos")]
+        [Microsoft.AspNetCore.Authorization.Authorize]
         public async Task<IActionResult> UploadAnexo(
             long id,
             IFormFile arquivo,
             CancellationToken ct = default)
         {
+            var logger = HttpContext.RequestServices.GetRequiredService<ILogger<ChamadosController>>();
+            
             if (arquivo == null || arquivo.Length == 0)
-                return BadRequest("Arquivo não fornecido.");
+                return BadRequest(new { message = "Arquivo não fornecido." });
 
             try
             {
@@ -256,48 +292,90 @@ namespace CarTechAssist.Api.Controllers
                 await _chamadosService.AdicionarAnexoAsync(
                     GetTenantId(), id, GetUsuarioId(), arquivo.FileName, arquivo.ContentType, bytes, ct);
 
+                logger.LogInformation("✅ Upload anexo - Sucesso. ChamadoId: {ChamadoId}, Arquivo: {FileName}", id, arquivo.FileName);
                 return Ok(new { message = "Arquivo enviado com sucesso." });
             }
             catch (ArgumentException ex)
             {
+                logger.LogWarning(ex, "Erro de validação ao fazer upload de anexo no chamado {ChamadoId}", id);
                 return BadRequest(new { message = ex.Message });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                logger.LogError(ex, "Erro de autorização ao fazer upload de anexo no chamado {ChamadoId}", id);
+                return StatusCode(403, new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Erro ao fazer upload de anexo no chamado {ChamadoId}", id);
+                return StatusCode(500, new { message = "Erro ao fazer upload do arquivo.", error = ex.Message });
             }
         }
 
         [HttpGet("{id:long}/anexos")]
+        [Microsoft.AspNetCore.Authorization.Authorize]
         public async Task<ActionResult<IReadOnlyList<AnexoDto>>> ListarAnexos(
             long id,
             CancellationToken ct = default)
         {
-            var anexos = await _chamadosService.ListarAnexosAsync(id, ct);
-            var anexosDto = anexos.Select(a => new AnexoDto(
-                a.AnexoId,
-                a.ChamadoId,
-                a.InteracaoId,
-                a.NomeArquivo,
-                a.ContentType,
-                a.TamanhoBytes,
-                a.UrlExterna,
-                a.DataCriacao
-            )).ToList();
+            var logger = HttpContext.RequestServices.GetRequiredService<ILogger<ChamadosController>>();
+            try
+            {
+                var anexos = await _chamadosService.ListarAnexosAsync(id, ct);
+                var anexosDto = anexos.Select(a => new AnexoDto(
+                    a.AnexoId,
+                    a.ChamadoId,
+                    a.InteracaoId,
+                    a.NomeArquivo,
+                    a.ContentType,
+                    a.TamanhoBytes,
+                    a.UrlExterna,
+                    a.DataCriacao
+                )).ToList();
 
-            return Ok(anexosDto);
+                return Ok(anexosDto);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                logger.LogError(ex, "Erro de autorização ao listar anexos do chamado {ChamadoId}", id);
+                return StatusCode(403, new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Erro ao listar anexos do chamado {ChamadoId}", id);
+                return StatusCode(500, new { message = "Erro ao listar anexos.", error = ex.Message });
+            }
         }
 
         [HttpGet("{id:long}/anexos/{anexoId:long}")]
+        [Microsoft.AspNetCore.Authorization.Authorize]
         public async Task<IActionResult> DownloadAnexo(
             long id,
             long anexoId,
             CancellationToken ct = default)
         {
-            var anexo = await _chamadosService.ObterAnexoAsync(anexoId, GetTenantId(), ct);
-            if (anexo == null || anexo.ChamadoId != id)
-                return NotFound("Anexo não encontrado.");
+            var logger = HttpContext.RequestServices.GetRequiredService<ILogger<ChamadosController>>();
+            try
+            {
+                var anexo = await _chamadosService.ObterAnexoAsync(anexoId, GetTenantId(), ct);
+                if (anexo == null || anexo.ChamadoId != id)
+                    return NotFound(new { message = "Anexo não encontrado." });
 
-            if (anexo.Conteudo == null || anexo.Conteudo.Length == 0)
-                return NotFound("Conteúdo do anexo não disponível.");
+                if (anexo.Conteudo == null || anexo.Conteudo.Length == 0)
+                    return NotFound(new { message = "Conteúdo do anexo não disponível." });
 
-            return File(anexo.Conteudo, anexo.ContentType ?? "application/octet-stream", anexo.NomeArquivo);
+                return File(anexo.Conteudo, anexo.ContentType ?? "application/octet-stream", anexo.NomeArquivo);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                logger.LogError(ex, "Erro de autorização ao baixar anexo {AnexoId} do chamado {ChamadoId}", anexoId, id);
+                return StatusCode(403, new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Erro ao baixar anexo {AnexoId} do chamado {ChamadoId}", anexoId, id);
+                return StatusCode(500, new { message = "Erro ao baixar anexo.", error = ex.Message });
+            }
         }
 
         [HttpPatch("{id:long}/status")]
@@ -329,29 +407,53 @@ namespace CarTechAssist.Api.Controllers
         }
 
         [HttpGet("estatisticas")]
+        [Microsoft.AspNetCore.Authorization.Authorize]
         public async Task<ActionResult<EstatisticasChamadosDto>> ObterEstatisticas(CancellationToken ct = default)
         {
-
-            var tipoUsuarioIdStr = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value;
-            int? solicitanteUsuarioId = null;
+            var logger = HttpContext.RequestServices.GetRequiredService<ILogger<ChamadosController>>();
             
-            if (byte.TryParse(tipoUsuarioIdStr, out var tipoUsuarioId) && tipoUsuarioId == 1)
+            try
             {
-                solicitanteUsuarioId = GetUsuarioId();
-            }
+                var tipoUsuarioIdStr = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value;
+                int? solicitanteUsuarioId = null;
+                
+                if (byte.TryParse(tipoUsuarioIdStr, out var tipoUsuarioId) && tipoUsuarioId == 1)
+                {
+                    solicitanteUsuarioId = GetUsuarioId();
+                }
 
-            var estatisticas = await _chamadosService.ObterEstatisticasAsync(
-                GetTenantId(), solicitanteUsuarioId, ct);
-            
-            return Ok(estatisticas);
+                var tenantId = GetTenantId();
+                logger.LogInformation("🔍 OBTER ESTATISTICAS - TenantId: {TenantId}, SolicitanteUsuarioId: {SolicitanteUsuarioId}", 
+                    tenantId, solicitanteUsuarioId);
+
+                var estatisticas = await _chamadosService.ObterEstatisticasAsync(
+                    tenantId, solicitanteUsuarioId, ct);
+                
+                logger.LogInformation("✅ OBTER ESTATISTICAS - Sucesso. Total: {Total}, Abertos: {Abertos}", 
+                    estatisticas?.Total ?? 0, estatisticas?.Abertos ?? 0);
+                
+                return Ok(estatisticas);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                logger.LogError(ex, "❌ OBTER ESTATISTICAS - Erro de autorização: {Message}", ex.Message);
+                return StatusCode(403, new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "❌ OBTER ESTATISTICAS - Erro inesperado: {Message}", ex.Message);
+                return StatusCode(500, new { message = "Erro ao obter estatísticas. Tente novamente.", error = ex.Message });
+            }
         }
 
         [HttpPost("{id:long}/feedback")]
+        [Microsoft.AspNetCore.Authorization.Authorize]
         public async Task<IActionResult> EnviarFeedback(
             long id, 
             [FromBody] EnviarFeedbackRequest request,
             CancellationToken ct = default)
         {
+            var logger = HttpContext.RequestServices.GetRequiredService<ILogger<ChamadosController>>();
             try
             {
                 await _chamadosService.RegistrarFeedbackAsync(
@@ -362,11 +464,23 @@ namespace CarTechAssist.Api.Controllers
                     request.Comentario, 
                     ct);
                 
+                logger.LogInformation("✅ Feedback registrado - Sucesso. ChamadoId: {ChamadoId}, Score: {Score}", id, request.Score);
                 return Ok(new { message = "Feedback registrado com sucesso." });
+            }
+            catch (ArgumentException ex)
+            {
+                logger.LogWarning(ex, "Erro de validação ao registrar feedback no chamado {ChamadoId}", id);
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                logger.LogError(ex, "Erro de autorização ao registrar feedback no chamado {ChamadoId}", id);
+                return StatusCode(403, new { message = ex.Message });
             }
             catch (Exception ex)
             {
-                return BadRequest(new { message = ex.Message });
+                logger.LogError(ex, "Erro ao registrar feedback no chamado {ChamadoId}", id);
+                return StatusCode(500, new { message = "Erro ao registrar feedback.", error = ex.Message });
             }
         }
     }

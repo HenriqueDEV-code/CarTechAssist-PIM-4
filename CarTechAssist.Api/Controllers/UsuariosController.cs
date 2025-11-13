@@ -24,28 +24,38 @@ namespace CarTechAssist.Api.Controllers
             _usuariosService = usuariosService;
         }
 
-      
         private int GetTenantId()
         {
+            // Primeiro tenta obter do header
             var tenantIdHeader = Request.Headers["X-Tenant-Id"].FirstOrDefault();
-            if (string.IsNullOrEmpty(tenantIdHeader) || !int.TryParse(tenantIdHeader, out var tenantId) || tenantId <= 0)
+            if (!string.IsNullOrEmpty(tenantIdHeader) && int.TryParse(tenantIdHeader, out var tenantId) && tenantId > 0)
             {
-                throw new UnauthorizedAccessException("TenantId não encontrado ou inválido no header X-Tenant-Id.");
+                // Se encontrou no header, valida com o JWT se disponível
+                if (User?.Identity?.IsAuthenticated == true)
+                {
+                    var jwtTenantId = User.FindFirst("TenantId")?.Value;
+                    if (!string.IsNullOrEmpty(jwtTenantId) && int.TryParse(jwtTenantId, out var jwtTenant))
+                    {
+                        if (jwtTenant != tenantId)
+                        {
+                            throw new UnauthorizedAccessException("TenantId do header não corresponde ao token JWT.");
+                        }
+                    }
+                }
+                return tenantId;
             }
 
+            // Se não encontrou no header, tenta obter do JWT
             if (User?.Identity?.IsAuthenticated == true)
             {
                 var jwtTenantId = User.FindFirst("TenantId")?.Value;
-                if (!string.IsNullOrEmpty(jwtTenantId) && int.TryParse(jwtTenantId, out var jwtTenant))
+                if (!string.IsNullOrEmpty(jwtTenantId) && int.TryParse(jwtTenantId, out var jwtTenant) && jwtTenant > 0)
                 {
-                    if (jwtTenant != tenantId)
-                    {
-                        throw new UnauthorizedAccessException("TenantId do header não corresponde ao token JWT.");
-                    }
+                    return jwtTenant;
                 }
             }
 
-            return tenantId;
+            throw new UnauthorizedAccessException("TenantId não encontrado no header X-Tenant-Id ou no token JWT. Faça login primeiro ou forneça o header X-Tenant-Id.");
         }
 
         [HttpGet]
@@ -57,18 +67,43 @@ namespace CarTechAssist.Api.Controllers
             [FromQuery] int pageSize = 20,
             CancellationToken ct = default)
         {
-           
-            const int maxPageSize = 100;
-            if (pageSize > maxPageSize)
-                pageSize = maxPageSize;
-            if (pageSize < 1)
-                pageSize = 20;
-            if (page < 1)
-                page = 1;
+            var logger = HttpContext.RequestServices.GetRequiredService<ILogger<UsuariosController>>();
+            
+            try
+            {
+                logger.LogInformation("🔍 LISTAR USUARIOS - Iniciando. Tipo: {Tipo}, Ativo: {Ativo}, Page: {Page}, PageSize: {PageSize}", 
+                    tipo, ativo, page, pageSize);
+                
+                const int maxPageSize = 100;
+                if (pageSize > maxPageSize)
+                    pageSize = maxPageSize;
+                if (pageSize < 1)
+                    pageSize = 20;
+                if (page < 1)
+                    page = 1;
 
-            var result = await _usuariosService.ListarAsync(
-                GetTenantId(), tipo, ativo, page, pageSize, ct);
-            return Ok(result);
+                var tenantId = GetTenantId();
+                logger.LogInformation("🔍 LISTAR USUARIOS - TenantId obtido: {TenantId}", tenantId);
+
+                var result = await _usuariosService.ListarAsync(
+                    tenantId, tipo, ativo, page, pageSize, ct);
+                
+                logger.LogInformation("✅ LISTAR USUARIOS - Sucesso. Total: {Total}, Items: {Count}", 
+                    result?.Total ?? 0, result?.Items?.Count() ?? 0);
+                
+                return Ok(result);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                logger.LogError(ex, "❌ LISTAR USUARIOS - Erro de autorização: {Message}", ex.Message);
+                return StatusCode(403, new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "❌ LISTAR USUARIOS - Erro inesperado: {Message}, StackTrace: {StackTrace}", 
+                    ex.Message, ex.StackTrace);
+                return StatusCode(500, new { message = "Erro ao listar usuários. Tente novamente.", error = ex.Message });
+            }
         }
 
         [HttpGet("{id:int}")]

@@ -24,6 +24,12 @@ namespace CarTechAssist.Infrastruture.Repositories
             string? comentario,
             CancellationToken ct)
         {
+            // Garantir que a conexão está aberta
+            if (_db.State != ConnectionState.Open)
+            {
+                _db.Open();
+            }
+
             const string sql = @"
                 INSERT INTO ia.IAFeedback (TenantId, ChamadoId, InteracaoId, DadoPorUsuarioId, Score, Comentario, DataCriacao)
                 OUTPUT INSERTED.FeedbackId
@@ -50,6 +56,12 @@ namespace CarTechAssist.Infrastruture.Repositories
             int tenantId,
             CancellationToken ct)
         {
+            // Garantir que a conexão está aberta
+            if (_db.State != ConnectionState.Open)
+            {
+                _db.Open();
+            }
+
             const string sql = @"
                 SELECT TOP 1 FeedbackId, TenantId, ChamadoId, InteracaoId, 
                        DadoPorUsuarioId, Score, Comentario, DataCriacao

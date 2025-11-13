@@ -85,8 +85,25 @@ namespace CarTechAssist.Application.Services
 
         private string GerarJwtToken(Domain.Entities.Usuario usuario)
         {
-            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(
-                _configuration["Jwt:SecretKey"] ?? throw new InvalidOperationException("JWT SecretKey não configurada")));
+            var jwtSecretKey = _configuration["Jwt:SecretKey"];
+            if (string.IsNullOrWhiteSpace(jwtSecretKey))
+            {
+                throw new InvalidOperationException(
+                    "JWT SecretKey não configurada ou está vazia. " +
+                    "Configure uma chave secreta válida no appsettings.json na seção 'Jwt:SecretKey'. " +
+                    "A chave deve ter pelo menos 32 caracteres para segurança adequada.");
+            }
+
+            // Validar comprimento mínimo da chave (32 bytes = 256 bits para HMAC-SHA256)
+            if (Encoding.UTF8.GetByteCount(jwtSecretKey) < 32)
+            {
+                throw new InvalidOperationException(
+                    $"JWT SecretKey deve ter pelo menos 32 caracteres (bytes). " +
+                    $"Chave atual tem {Encoding.UTF8.GetByteCount(jwtSecretKey)} bytes. " +
+                    "Configure uma chave secreta mais longa no appsettings.json.");
+            }
+
+            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecretKey));
             var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
             var tipoUsuarioIdNumero = ((byte)usuario.TipoUsuarioId).ToString();

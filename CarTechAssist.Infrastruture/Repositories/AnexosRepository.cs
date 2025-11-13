@@ -16,6 +16,12 @@ namespace CarTechAssist.Infrastruture.Repositories
 
         public async Task<long> AdicionarAsync(ChamadoAnexo anexo, CancellationToken ct)
         {
+            // Garantir que a conexão está aberta
+            if (_db.State != ConnectionState.Open)
+            {
+                _db.Open();
+            }
+
             const string sql = @"
                 INSERT INTO core.ChamadoAnexo 
                     (ChamadoId, InteracaoId, TenantId, NomeArquivo, ContentType, 
@@ -33,6 +39,12 @@ namespace CarTechAssist.Infrastruture.Repositories
 
         public async Task<IReadOnlyList<ChamadoAnexo>> ListarPorChamadoAsync(int chamadoId, CancellationToken ct)
         {
+            // Garantir que a conexão está aberta
+            if (_db.State != ConnectionState.Open)
+            {
+                _db.Open();
+            }
+
             const string sql = @"
                 SELECT AnexoId, ChamadoId, InteracaoId, TenantId, NomeArquivo, 
                        ContentType, TamanhoBytes, UrlExterna, DataCriacao, Excluido, RowVer
@@ -48,6 +60,12 @@ namespace CarTechAssist.Infrastruture.Repositories
 
         public async Task<ChamadoAnexo?> ObterPorIdAsync(long anexoId, int tenantId, CancellationToken ct)
         {
+            // Garantir que a conexão está aberta
+            if (_db.State != ConnectionState.Open)
+            {
+                _db.Open();
+            }
+
             const string sql = @"
                 SELECT AnexoId, ChamadoId, InteracaoId, TenantId, NomeArquivo, 
                        ContentType, TamanhoBytes, Conteudo, UrlExterna, HashConteudo, 

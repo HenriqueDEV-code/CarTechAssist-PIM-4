@@ -104,6 +104,11 @@ namespace CarTechAssist.Web.Services
         {
             return await _apiClient.PostAsync<ChamadoDetailDto>($"api/chamados/{id}/feedback", request, ct);
         }
+
+        public async Task<EstatisticasChamadosDto?> ObterEstatisticasAsync(CancellationToken ct = default)
+        {
+            return await _apiClient.GetAsync<EstatisticasChamadosDto>("api/chamados/estatisticas", ct);
+        }
     }
 }
 
