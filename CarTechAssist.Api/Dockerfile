@@ -1,20 +1,19 @@
-﻿# STAGE 1 – build
-FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+﻿FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
-COPY ["CarTechAssist.Api/CarTechAssist.Api.csproj", "CarTechAssist.Api/"]
-COPY ["CarTechAssist.Application/CarTechAssist.Application.csproj", "CarTechAssist.Application/"]
-COPY ["CarTechAssist.Contracts/CarTechAssist.Contracts.csproj", "CarTechAssist.Contracts/"]
-COPY ["CarTechAssist.Infrastruture/CarTechAssist.Infrastruture.csproj", "CarTechAssist.Infrastruture/"]
-
-RUN dotnet restore "CarTechAssist.Api/CarTechAssist.Api.csproj"
-
+# Copia TODO o código da solução
 COPY . .
 
-WORKDIR "/src/CarTechAssist.Api"
+# Entra na pasta da API
+WORKDIR /src/CarTechAssist.Api
+
+# Restaura os pacotes da solução a partir da API
+RUN dotnet restore
+
+# Publica em Release
 RUN dotnet publish -c Release -o /app/publish
 
-# STAGE 2 – runtime
+# ---------- RUNTIME ----------
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
 WORKDIR /app
 
