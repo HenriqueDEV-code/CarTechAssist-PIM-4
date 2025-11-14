@@ -1,17 +1,14 @@
 ﻿FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
-# Copia TODO o código da solução
+# Copia tudo da pasta CarTechAssist.Api (contexto atual) para /src
 COPY . .
 
-# Entra na pasta da API
-WORKDIR /src/CarTechAssist.Api
+# Aqui já estamos DENTRO da pasta da API (não existe subpasta CarTechAssist.Api)
+# Então o csproj está em /src/CarTechAssist.Api.csproj
+RUN dotnet restore "CarTechAssist.Api.csproj"
 
-# Restaura os pacotes da solução a partir da API
-RUN dotnet restore
-
-# Publica em Release
-RUN dotnet publish -c Release -o /app/publish
+RUN dotnet publish "CarTechAssist.Api.csproj" -c Release -o /app/publish
 
 # ---------- RUNTIME ----------
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
