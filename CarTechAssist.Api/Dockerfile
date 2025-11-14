@@ -1,27 +1,33 @@
-﻿
-# STAGE 1 – build
+﻿# STAGE 1 – build
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
-# Copia o repositório inteiro para dentro do container
+# Copia apenas os .csproj primeiro (build mais rápido e ajuda o restore)
+COPY ["CarTechAssist.Api/CarTechAssist.Api.csproj", "CarTechAssist.Api/"]
+COPY ["CarTechAssist.Application/CarTechAssist.Application.csproj", "CarTechAssist.Application/"]
+COPY ["CarTechAssist.Domain/CarTechAssist.Domain.csproj", "CarTechAssist.Domain/"]
+COPY ["CarTechAssist.Infrastructure/CarTechAssist.Infrastructure.csproj", "CarTechAssist.Infrastructure/"]
+
+# Restaura as dependências da API (ele puxa as libs referenciadas)
+RUN dotnet restore "CarTechAssist.Api/CarTechAssist.Api.csproj"
+
+# Agora copia o restante do código
 COPY . .
 
 # Entra na pasta da API
-WORKDIR /src/CarTechAssist.Api
+WORKDIR "/src/CarTechAssist.Api"
 
-# Restaura e publica
-RUN dotnet restore
-RUN dotnet publish -c Release -o /app/publish
+# Publica em Release
+RUN dotnet publish "CarTechAssist.Api.csproj" -c Release -o /app/publish
 
 # STAGE 2 – runtime
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
 WORKDIR /app
 
-# Copia o resultado da publicação
+# Copia os artefatos publicados
 COPY --from=build /app/publish ./
 
-# Render injeta a porta em $PORT
+# Porta definida pelo Render
 ENV ASPNETCORE_URLS=http://0.0.0.0:${PORT}
 
-# Nome da DLL de saída da sua API
 ENTRYPOINT ["dotnet", "CarTechAssist.Api.dll"]
