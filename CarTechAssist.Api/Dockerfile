@@ -6,7 +6,7 @@ WORKDIR /src
 COPY ["CarTechAssist.Api/CarTechAssist.Api.csproj", "CarTechAssist.Api/"]
 COPY ["CarTechAssist.Application/CarTechAssist.Application.csproj", "CarTechAssist.Application/"]
 COPY ["CarTechAssist.Domain/CarTechAssist.Domain.csproj", "CarTechAssist.Domain/"]
-COPY ["CarTechAssist.Infrastructure/CarTechAssist.Infrastructure.csproj", "CarTechAssist.Infrastructure/"]
+COPY ["CarTechAssist.Infrastruture/CarTechAssist.Infrastruture.csproj", "CarTechAssist.Infrastruture/"]
 
 # Restaura as dependências da API (ele puxa as libs referenciadas)
 RUN dotnet restore "CarTechAssist.Api/CarTechAssist.Api.csproj"
