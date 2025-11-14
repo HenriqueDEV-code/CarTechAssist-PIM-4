@@ -62,35 +62,24 @@ namespace CarTechAssist.Web.Pages
 
             try
             {
-                // CORREÇÃO: Otimizar carregamento - usar endpoint de estatísticas
-                // Carregar apenas os 10 mais recentes para exibição
-                var resultadoRecentes = await _chamadosService.ListarAsync(page: 1, pageSize: 10, ct: ct);
-                ChamadosRecentes = resultadoRecentes?.Items?.ToList() ?? new List<TicketView>();
+                // Carregar todos os chamados (sem paginação para estatísticas)
+                var resultadoCompleto = await _chamadosService.ListarAsync(page: 1, pageSize: 1000, ct: ct);
                 
-                // CORREÇÃO: Usar endpoint de estatísticas para valores exatos (otimizado)
-                try
+                if (resultadoCompleto?.Items != null)
                 {
-                    var estatisticas = await _chamadosService.ObterEstatisticasAsync(ct);
-                    if (estatisticas != null)
-                    {
-                        TotalChamados = estatisticas.Total;
-                        TotalChamadosAbertos = estatisticas.Abertos;
-                        TotalChamadosEmAndamento = estatisticas.EmAndamento;
-                        TotalChamadosResolvidos = estatisticas.Resolvidos;
-                    }
-                    else
-                    {
-                        // Fallback: usar total da paginação
-                        TotalChamados = resultadoRecentes?.Total ?? 0;
-                        TotalChamadosAbertos = 0;
-                        TotalChamadosEmAndamento = 0;
-                        TotalChamadosResolvidos = 0;
-                    }
+                    var todosChamados = resultadoCompleto.Items.ToList();
+                    
+                    ChamadosRecentes = todosChamados.Take(10).ToList();
+                    
+                    TotalChamados = resultadoCompleto.Total;
+                    TotalChamadosAbertos = todosChamados.Count(c => c.StatusNome == "1" || c.StatusNome?.ToLower().Contains("aberto") == true);
+                    TotalChamadosEmAndamento = todosChamados.Count(c => c.StatusNome == "2" || c.StatusNome?.ToLower().Contains("andamento") == true);
+                    TotalChamadosResolvidos = todosChamados.Count(c => c.StatusNome == "3" || c.StatusNome?.ToLower().Contains("resolvido") == true);
                 }
-                catch
+                else
                 {
-                    // Se endpoint de estatísticas falhar, usar fallback
-                    TotalChamados = resultadoRecentes?.Total ?? 0;
+                    ChamadosRecentes = new List<TicketView>();
+                    TotalChamados = 0;
                     TotalChamadosAbertos = 0;
                     TotalChamadosEmAndamento = 0;
                     TotalChamadosResolvidos = 0;

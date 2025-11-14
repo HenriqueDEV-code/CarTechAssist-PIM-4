@@ -188,9 +188,13 @@
 
 @section Scripts {
     @* Renderiza os scripts de validação do ASP.NET Core (jQuery Validation) *@
+<<<<<<< HEAD
+    @{await Html.RenderPartialAsync("_ValidationScriptsPartial");}
+=======
     @{
         await Html.RenderPartialAsync("_ValidationScriptsPartial");
     }
+>>>>>>> d102f6a0e70f360b2bcfc4cb8ad083f6006f0408
     <script>
         @* Script executado quando a página é carregada *@
         document.addEventListener('DOMContentLoaded', function() {
@@ -202,13 +206,17 @@
 
             /**
              * Calcula a data/hora estimada de conclusão do SLA baseado na prioridade selecionada.
-             * param {string|number} prioridadeId - ID da prioridade (1=Baixa, 2=Média, 3=Alta, 4=Urgente)
-             * returns {string} Data/hora formatada no formato: YYYY-MM-DD HH:mm:ss.mmm
+             * @param {string|number} prioridadeId - ID da prioridade (1=Baixa, 2=Média, 3=Alta, 4=Urgente)
+             * @returns {string} Data/hora formatada no formato: YYYY-MM-DD HH:mm:ss.mmm
              */
             function calcularSLA(prioridadeId) {
                 const agora = new Date();
                 let horas = 48; // Padrão: Média
+<<<<<<< HEAD
+                
+=======
 
+>>>>>>> d102f6a0e70f360b2bcfc4cb8ad083f6006f0408
                 // Define as horas de SLA baseado na prioridade
                 switch(parseInt(prioridadeId)) {
                     case 1: horas = 72; break; // Baixa: 72 horas (3 dias)
@@ -216,7 +224,11 @@
                     case 3: horas = 24; break; // Alta: 24 horas (1 dia)
                     case 4: horas = 4; break;  // Urgente: 4 horas
                 }
+<<<<<<< HEAD
+                
+=======
 
+>>>>>>> d102f6a0e70f360b2bcfc4cb8ad083f6006f0408
                 // Calcula a data estimada adicionando as horas à data atual
                 const dataEstimada = new Date(agora.getTime() + (horas * 60 * 60 * 1000));
 
@@ -240,11 +252,19 @@
                 function atualizarSLA() {
                     slaEstimadoInput.value = calcularSLA(prioridadeSelect.value);
                 }
+<<<<<<< HEAD
+                
+                atualizarSLA(); // Calcula o SLA inicial ao carregar a página
+                prioridadeSelect.addEventListener('change', atualizarSLA); // Atualiza quando a prioridade muda
+            }
+            
+=======
 
                 atualizarSLA(); // Calcula o SLA inicial ao carregar a página
                 prioridadeSelect.addEventListener('change', atualizarSLA); // Atualiza quando a prioridade muda
             }
 
+>>>>>>> d102f6a0e70f360b2bcfc4cb8ad083f6006f0408
             // Validação customizada do formulário antes do submit
             if (form) {
                 /**
