@@ -118,11 +118,42 @@ namespace CarTechAssist.Infrastruture.Repositories
 
         public async Task<Usuario> CriarAsync(Usuario usuario, CancellationToken ct)
         {
+            // Validações antes de inserir
+            if (usuario.TenantId <= 0)
+                throw new ArgumentException("TenantId deve ser maior que zero.", nameof(usuario));
+            
+            if (string.IsNullOrWhiteSpace(usuario.Login))
+                throw new ArgumentException("Login é obrigatório.", nameof(usuario));
+            
+            if (string.IsNullOrWhiteSpace(usuario.NomeCompleto))
+                throw new ArgumentException("NomeCompleto é obrigatório.", nameof(usuario));
+            
+            if (usuario.HashSenha == null || usuario.HashSenha.Length == 0)
+                throw new ArgumentException("HashSenha é obrigatório.", nameof(usuario));
+            
+            if (usuario.SaltSenha == null || usuario.SaltSenha.Length == 0)
+                throw new ArgumentException("SaltSenha é obrigatório.", nameof(usuario));
+
             // Garantir que a conexão está aberta
             if (_db.State != ConnectionState.Open)
             {
                 _db.Open();
             }
+
+            // Usar parâmetros explícitos para evitar problemas de mapeamento
+            var parameters = new DynamicParameters();
+            parameters.Add("TenantId", usuario.TenantId, DbType.Int32);
+            parameters.Add("TipoUsuarioId", (byte)usuario.TipoUsuarioId, DbType.Byte);
+            parameters.Add("Login", usuario.Login?.Trim(), DbType.String, size: 100);
+            parameters.Add("NomeCompleto", usuario.NomeCompleto?.Trim(), DbType.String, size: 200);
+            parameters.Add("Email", string.IsNullOrWhiteSpace(usuario.Email) ? (object)DBNull.Value : usuario.Email.Trim(), DbType.String, size: 200);
+            parameters.Add("Telefone", string.IsNullOrWhiteSpace(usuario.Telefone) ? (object)DBNull.Value : usuario.Telefone.Trim(), DbType.String, size: 50);
+            parameters.Add("HashSenha", usuario.HashSenha, DbType.Binary);
+            parameters.Add("SaltSenha", usuario.SaltSenha, DbType.Binary);
+            parameters.Add("PrecisaTrocarSenha", usuario.PrecisaTrocarSenha, DbType.Boolean);
+            parameters.Add("Ativo", usuario.Ativo, DbType.Boolean);
+            parameters.Add("DataCriacao", usuario.DataCriacao, DbType.DateTime2);
+            parameters.Add("Excluido", usuario.Excluido, DbType.Boolean);
 
             const string sql = @"
                 INSERT INTO core.Usuario 
@@ -136,15 +167,27 @@ namespace CarTechAssist.Infrastruture.Repositories
             try
             {
                 var usuarioId = await _db.QuerySingleAsync<int>(
-                    new CommandDefinition(sql, usuario, cancellationToken: ct));
+                    new CommandDefinition(sql, parameters, cancellationToken: ct));
+
+                if (usuarioId <= 0)
+                {
+                    throw new InvalidOperationException("Falha ao criar usuário. ID retornado é inválido.");
+                }
 
                 usuario.UsuarioId = usuarioId;
                 return usuario;
             }
             catch (Exception ex)
             {
-                // Log do erro para diagnóstico
-                throw new InvalidOperationException($"Erro ao criar usuário no banco de dados: {ex.Message}", ex);
+                // Log do erro para diagnóstico com mais detalhes
+                var errorDetails = $"Erro ao criar usuário no banco de dados. " +
+                    $"TenantId: {usuario.TenantId}, Login: {usuario.Login}, " +
+                    $"TipoUsuarioId: {usuario.TipoUsuarioId}, " +
+                    $"HashSenha: {(usuario.HashSenha != null ? usuario.HashSenha.Length + " bytes" : "NULL")}, " +
+                    $"SaltSenha: {(usuario.SaltSenha != null ? usuario.SaltSenha.Length + " bytes" : "NULL")}, " +
+                    $"Erro: {ex.Message}";
+                
+                throw new InvalidOperationException(errorDetails, ex);
             }
         }
 

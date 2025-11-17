@@ -559,24 +559,16 @@
         if (statusSelect) {
             statusSelect.addEventListener('change', async function() {
                 const novoStatus = parseInt(this.value);
-                const statusAnterior = @(Model.Chamado?.StatusId ?? 1);
+                const statusAnterior = statusAtual;
                 
                 // Se não mudou, não faz nada
                 if (novoStatus === statusAnterior) {
                     return;
                 }
 
-                // Confirmação antes de alterar
-                const statusNome = this.options[this.selectedIndex].text;
-                if (!confirm(`Deseja realmente alterar o status para "${statusNome}"?`)) {
-                    // Reverte para o status anterior
-                    this.value = statusAnterior;
-                    return;
-                }
-
                 // Desabilita o select durante o processamento
                 this.disabled = true;
-                const selectOriginal = this.innerHTML;
+                const valorAnterior = statusAnterior;
 
                 try {
                     const formData = new FormData();
@@ -601,13 +593,13 @@
                     // Verifica o status HTTP
                     if (!response.ok) {
                         // Erro HTTP - reverte o select e exibe mensagem
-                        this.value = statusAnterior;
+                        this.value = valorAnterior;
                         const errorMsg = result?.message || `Erro ${response.status}: ${response.statusText}`;
                         
                         if (response.status === 401) {
                             alert('Sua sessão expirou. Por favor, faça login novamente.');
-                            // Opcional: redirecionar para login
-                            // window.location.href = '/Login';
+                            window.location.href = '/Login';
+                            return;
                         } else {
                             alert(errorMsg);
                         }
@@ -615,17 +607,25 @@
                     }
 
                     if (result.success) {
-                        // Sucesso - recarrega a página para atualizar os dados
-                        location.reload();
+                        // Sucesso - atualiza o status localmente e a variável global
+                        statusAtual = novoStatus;
+                        const statusNome = this.options[this.selectedIndex].text;
+                        atualizarStatus(novoStatus, statusNome);
+                        
+                        // Feedback visual sutil (opcional)
+                        this.style.borderColor = '#28a745';
+                        setTimeout(() => {
+                            this.style.borderColor = '';
+                        }, 1000);
                     } else {
                         // Erro - reverte o select e exibe mensagem
-                        this.value = statusAnterior;
+                        this.value = valorAnterior;
                         alert(result.message || 'Erro ao alterar status. Tente novamente.');
                     }
                 } catch (error) {
                     console.error('Erro:', error);
                     // Reverte para o status anterior
-                    this.value = statusAnterior;
+                    this.value = valorAnterior;
                     alert(error.message || 'Erro ao alterar status. Tente novamente.');
                 } finally {
                     this.disabled = false;
