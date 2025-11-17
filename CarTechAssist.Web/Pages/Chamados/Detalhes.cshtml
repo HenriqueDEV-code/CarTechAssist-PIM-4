@@ -77,7 +77,7 @@
                             }
                             else
                             {
-                                <span class="badge @Model.GetStatusBadgeClass(Model.Chamado.StatusId) ms-2">
+                                <span id="statusBadge" class="badge @Model.GetStatusBadgeClass(Model.Chamado.StatusId) ms-2">
                                     @Model.Chamado.StatusNome
                                 </span>
                             }
@@ -249,6 +249,59 @@
             return response;
         }
 
+        // Função para adicionar mensagem ao chat dinamicamente
+        function adicionarMensagemAoChat(interacao) {
+            const chatMessages = document.getElementById('chatMessages');
+            if (!chatMessages) return;
+
+            // Remove a mensagem de "Nenhuma mensagem ainda" se existir
+            const emptyMessage = chatMessages.querySelector('.empty-chat-message');
+            if (emptyMessage) {
+                emptyMessage.remove();
+            }
+
+            // Cria o elemento da mensagem
+            const mensagemDiv = document.createElement('div');
+            mensagemDiv.className = 'mb-3 p-3 chat-message';
+            mensagemDiv.setAttribute('data-interacao-id', interacao.interacaoId);
+            mensagemDiv.style.cssText = 'background: var(--bg-primary); border-radius: 8px; border-left: 3px solid var(--accent-green); opacity: 0; transition: opacity 0.3s ease-in;';
+            
+            const badgeIA = interacao.iaGerada ? '<span class="badge bg-info ms-2">IA</span>' : '';
+            
+            mensagemDiv.innerHTML = `
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                    <div>
+                        <strong style="color: var(--accent-green);">${escapeHtml(interacao.autorNome)}</strong>
+                        ${badgeIA}
+                    </div>
+                    <small class="text-muted">${interacao.dataCriacao}</small>
+                </div>
+                <p class="mb-0" style="white-space: pre-wrap; word-wrap: break-word;">${escapeHtml(interacao.mensagem)}</p>
+            `;
+
+            chatMessages.appendChild(mensagemDiv);
+            
+            // Animação de fade-in
+            setTimeout(() => {
+                mensagemDiv.style.opacity = '1';
+            }, 10);
+            
+            // Scroll automático para a última mensagem com animação suave
+            setTimeout(() => {
+                chatMessages.scrollTo({
+                    top: chatMessages.scrollHeight,
+                    behavior: 'smooth'
+                });
+            }, 100);
+        }
+
+        // Função para escapar HTML (prevenir XSS)
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
         // Enviar mensagem
         document.getElementById('btnEnviarMensagem')?.addEventListener('click', async function() {
             const input = document.getElementById('mensagemInput');
@@ -262,30 +315,52 @@
             const btn = this;
             btn.disabled = true;
             btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Enviando...';
+            input.disabled = true;
 
             try {
                 const response = await enviarMensagem(mensagem);
 
-                if (response.ok || response.redirected) {
-                    input.value = '';
-                    location.reload();
+                // Verifica se a resposta é JSON
+                let result;
+                const contentType = response.headers.get('content-type');
+                if (contentType && contentType.includes('application/json')) {
+                    result = await response.json();
                 } else {
-                    const errorText = await response.text();
-                    let errorMessage = 'Erro ao enviar mensagem. Tente novamente.';
-                    try {
-                        const error = JSON.parse(errorText);
-                        errorMessage = error.message || errorMessage;
-                    } catch {
-                        errorMessage = errorText || errorMessage;
+                    const text = await response.text();
+                    throw new Error(text || `Erro HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                // Verifica o status HTTP
+                if (!response.ok) {
+                    const errorMsg = result?.message || `Erro ${response.status}: ${response.statusText}`;
+                    
+                    if (response.status === 401) {
+                        alert('Sua sessão expirou. Por favor, faça login novamente.');
+                        window.location.href = '/Login';
+                        return;
+                    } else {
+                        alert(errorMsg);
+                        return;
                     }
-                    alert(errorMessage);
+                }
+
+                if (result.success && result.interacao) {
+                    // Adiciona a mensagem ao chat dinamicamente
+                    adicionarMensagemAoChat(result.interacao);
+                    // Atualiza o último ID para evitar duplicatas
+                    ultimoInteracaoId = Math.max(ultimoInteracaoId, result.interacao.interacaoId);
+                    input.value = '';
+                } else {
+                    alert(result.message || 'Erro ao enviar mensagem. Tente novamente.');
                 }
             } catch (error) {
                 console.error('Erro:', error);
-                alert('Erro ao enviar mensagem. Tente novamente.');
+                alert(error.message || 'Erro ao enviar mensagem. Tente novamente.');
             } finally {
                 btn.disabled = false;
                 btn.innerHTML = '<i class="bi bi-send"></i> Enviar';
+                input.disabled = false;
+                input.focus();
             }
         });
 
@@ -293,6 +368,126 @@
         document.getElementById('mensagemInput')?.addEventListener('keypress', function(e) {
             if (e.key === 'Enter') {
                 document.getElementById('btnEnviarMensagem')?.click();
+            }
+        });
+
+        // ============================================
+        // ATUALIZAÇÃO AUTOMÁTICA DO CHAT E STATUS
+        // ============================================
+        
+        let ultimoInteracaoId = @(Model.Interacoes?.Any() == true ? Model.Interacoes.Max(i => i.InteracaoId) : 0);
+        let statusAtual = @(Model.Chamado?.StatusId ?? 1);
+        let atualizando = false;
+        let intervaloAtualizacao = null;
+
+        // Função para buscar novas mensagens e atualizar status
+        async function verificarAtualizacoes() {
+            // Evita múltiplas requisições simultâneas
+            if (atualizando) return;
+            
+            atualizando = true;
+            
+            try {
+                const response = await fetch(`/Chamados/Detalhes/${chamadoId}?handler=NovasInteracoes&ultimoInteracaoId=${ultimoInteracaoId}`);
+                
+                if (!response.ok) {
+                    // Se der erro 401, para o polling
+                    if (response.status === 401) {
+                        console.log('Sessão expirada. Parando atualização automática.');
+                        pararAtualizacao();
+                        return;
+                    }
+                    return;
+                }
+
+                const result = await response.json();
+                
+                if (result.success) {
+                    // Adicionar novas mensagens ao chat
+                    if (result.interacoes && result.interacoes.length > 0) {
+                        result.interacoes.forEach(interacao => {
+                            // Verifica se a mensagem já não existe (evita duplicatas)
+                            const existe = document.querySelector(`[data-interacao-id="${interacao.interacaoId}"]`);
+                            if (!existe) {
+                                adicionarMensagemAoChat(interacao);
+                                ultimoInteracaoId = Math.max(ultimoInteracaoId, interacao.interacaoId);
+                            }
+                        });
+                    }
+
+                    // Atualizar status se mudou
+                    if (result.statusId && result.statusId !== statusAtual) {
+                        statusAtual = result.statusId;
+                        atualizarStatus(result.statusId, result.statusNome);
+                    }
+                }
+            } catch (error) {
+                console.error('Erro ao verificar atualizações:', error);
+            } finally {
+                atualizando = false;
+            }
+        }
+
+        // Função para atualizar o status na interface
+        function atualizarStatus(novoStatusId, novoStatusNome) {
+            const statusSelect = document.getElementById('statusSelect');
+            const statusBadge = document.getElementById('statusBadge');
+            
+            if (statusSelect) {
+                // Atualiza o select se existir (técnicos/admins)
+                statusSelect.value = novoStatusId;
+            } else if (statusBadge) {
+                // Atualiza o badge se existir (clientes)
+                statusBadge.textContent = novoStatusNome;
+                // Atualiza a classe do badge baseado no status
+                statusBadge.className = `badge ${getStatusBadgeClass(novoStatusId)} ms-2`;
+            }
+        }
+
+        // Função auxiliar para obter a classe do badge do status
+        function getStatusBadgeClass(statusId) {
+            const classes = {
+                1: 'bg-secondary', // Aberto
+                2: 'bg-primary',    // Em Andamento
+                3: 'bg-warning',   // Em Espera
+                4: 'bg-success',    // Resolvido
+                5: 'bg-dark',       // Fechado
+                6: 'bg-danger'      // Cancelado
+            };
+            return classes[statusId] || 'bg-secondary';
+        }
+
+        // Função para iniciar atualização automática
+        function iniciarAtualizacao() {
+            // Verifica a cada 3 segundos
+            intervaloAtualizacao = setInterval(verificarAtualizacoes, 3000);
+            console.log('Atualização automática iniciada.');
+        }
+
+        // Função para parar atualização automática
+        function pararAtualizacao() {
+            if (intervaloAtualizacao) {
+                clearInterval(intervaloAtualizacao);
+                intervaloAtualizacao = null;
+                console.log('Atualização automática parada.');
+            }
+        }
+
+        // Iniciar atualização automática quando a página carregar
+        // Aguarda 2 segundos antes de começar para não sobrecarregar
+        setTimeout(() => {
+            iniciarAtualizacao();
+        }, 2000);
+
+        // Parar atualização quando a página for fechada ou o usuário sair
+        window.addEventListener('beforeunload', pararAtualizacao);
+        
+        // Pausar atualização quando a aba não estiver visível (para economizar recursos)
+        document.addEventListener('visibilitychange', function() {
+            if (document.hidden) {
+                pararAtualizacao();
+            } else {
+                iniciarAtualizacao();
             }
         });
 

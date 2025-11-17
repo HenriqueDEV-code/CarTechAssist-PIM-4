@@ -168,28 +168,79 @@ namespace CarTechAssist.Infrastruture.Repositories
                 new CommandDefinition(sql, parameters, cancellationToken: ct));
         }
 
-        public async Task<Chamado> AdicionarInteracaoAsync(
+        public async Task<ChamadoInteracao> AdicionarInteracaoAsync(
             long chamadoId,
             int tenantId,
             int usuarioId,
             string mensagem,
             CancellationToken ct)
         {
-            const string sql = @"
-                EXEC core.usp_Chamado_AdicionarInteracao
-                    @ChamadoId = @chamadoId,
-                    @TenantId = @tenantId,
-                    @UsuarioId = @usuarioId,
-                    @Mensagem = @mensagem";
+            // Garantir que a conexão está aberta
+            if (_db.State != ConnectionState.Open)
+            {
+                _db.Open();
+            }
+
+            // Primeiro, verificar se o chamado existe e pertence ao tenant
+            const string checkSql = @"
+                SELECT ChamadoId, TenantId, CanalId, SolicitanteUsuarioId
+                FROM core.Chamado 
+                WHERE ChamadoId = @chamadoId AND TenantId = @tenantId AND Excluido = 0";
+
+            var chamadoInfo = await _db.QueryFirstOrDefaultAsync<dynamic>(
+                new CommandDefinition(checkSql, new { chamadoId, tenantId }, cancellationToken: ct));
+
+            if (chamadoInfo == null)
+            {
+                throw new InvalidOperationException($"Chamado {chamadoId} não encontrado ou não pertence ao tenant {tenantId}.");
+            }
+
+            // Obter informações do usuário para determinar o tipo
+            const string usuarioSql = @"
+                SELECT UsuarioId, TipoUsuarioId
+                FROM core.Usuario
+                WHERE UsuarioId = @usuarioId AND TenantId = @tenantId AND Excluido = 0";
+
+            var usuarioInfo = await _db.QueryFirstOrDefaultAsync<dynamic>(
+                new CommandDefinition(usuarioSql, new { usuarioId, tenantId }, cancellationToken: ct));
+
+            if (usuarioInfo == null)
+            {
+                throw new InvalidOperationException($"Usuário {usuarioId} não encontrado ou não pertence ao tenant {tenantId}.");
+            }
+
+            var autorTipoUsuarioId = (byte)usuarioInfo.TipoUsuarioId;
+            var canalId = (byte)chamadoInfo.CanalId;
+
+            // Inserir a interação
+            const string insertSql = @"
+                INSERT INTO core.ChamadoInteracao 
+                    (ChamadoId, TenantId, AutorUsuarioId, AutorTipoUsuarioId, CanalId, Mensagem, Interna, IA_Gerada, DataCriacao, Excluido)
+                OUTPUT INSERTED.*
+                VALUES 
+                    (@chamadoId, @tenantId, @autorUsuarioId, @autorTipoUsuarioId, @canalId, @mensagem, 0, 0, GETUTCDATE(), 0)";
 
             var parameters = new DynamicParameters();
             parameters.Add("chamadoId", chamadoId);
             parameters.Add("tenantId", tenantId);
-            parameters.Add("usuarioId", usuarioId);
+            parameters.Add("autorUsuarioId", usuarioId);
+            parameters.Add("autorTipoUsuarioId", autorTipoUsuarioId);
+            parameters.Add("canalId", canalId);
             parameters.Add("mensagem", mensagem);
 
-            return await _db.QueryFirstAsync<Chamado>(
-                new CommandDefinition(sql, parameters, cancellationToken: ct));
+            var interacao = await _db.QueryFirstAsync<ChamadoInteracao>(
+                new CommandDefinition(insertSql, parameters, cancellationToken: ct));
+
+            // Atualizar DataAtualizacao do chamado
+            const string updateChamadoSql = @"
+                UPDATE core.Chamado 
+                SET DataAtualizacao = GETUTCDATE()
+                WHERE ChamadoId = @chamadoId AND TenantId = @tenantId";
+
+            await _db.ExecuteAsync(
+                new CommandDefinition(updateChamadoSql, new { chamadoId, tenantId }, cancellationToken: ct));
+
+            return interacao;
         }
 
         public async Task<IReadOnlyList<ChamadoInteracao>> ListarInteracoesAsync(

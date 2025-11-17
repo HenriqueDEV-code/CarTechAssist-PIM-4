@@ -50,7 +50,7 @@ namespace CarTechAssist.Domain.Interfaces
             CancellationToken ct
             );
 
-        Task<Chamado> AdicionarInteracaoAsync(
+        Task<ChamadoInteracao> AdicionarInteracaoAsync(
             long chamadoId,
             int tenantId,
             int usuarioId,

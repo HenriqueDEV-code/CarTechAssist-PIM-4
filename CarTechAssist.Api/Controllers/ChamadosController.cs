@@ -244,30 +244,55 @@ namespace CarTechAssist.Api.Controllers
         [Microsoft.AspNetCore.Authorization.Authorize]
         public async Task<IActionResult> AdicionarInteracao(
             long id,
-            [FromBody] AdicionarInteracaoRequest request,
+            [FromBody] AdicionarInteracaoRequest? request,
             CancellationToken ct = default)
         {
             var logger = HttpContext.RequestServices.GetRequiredService<ILogger<ChamadosController>>();
+            
             try
             {
+                // Validação do request
+                if (request == null || string.IsNullOrWhiteSpace(request.Mensagem))
+                {
+                    logger.LogWarning("Request nulo ou mensagem vazia ao adicionar interação ao chamado {ChamadoId}", id);
+                    return BadRequest(new { message = "Request inválido. O campo 'mensagem' é obrigatório." });
+                }
+
+                // Validação de autenticação
+                if (User?.Identity?.IsAuthenticated != true)
+                {
+                    logger.LogWarning("Tentativa de adicionar interação sem autenticação. ChamadoId: {ChamadoId}", id);
+                    return Unauthorized(new { message = "Não autenticado. Faça login primeiro." });
+                }
+
+                var tenantId = GetTenantId();
+                var usuarioId = GetUsuarioId();
+                
+                logger.LogInformation("Adicionando interação ao chamado {ChamadoId}. TenantId: {TenantId}, UsuarioId: {UsuarioId}", 
+                    id, tenantId, usuarioId);
+
                 var result = await _chamadosService.AdicionarInteracaoAsync(
-                    GetTenantId(), id, GetUsuarioId(), request, ct);
+                    tenantId, id, usuarioId, request, ct);
+                    
+                logger.LogInformation("Interação adicionada com sucesso ao chamado {ChamadoId}. InteracaoId: {InteracaoId}", 
+                    id, result.InteracaoId);
                 return Ok(result);
             }
-            catch (ArgumentException ex)
+            catch (InvalidOperationException ex)
             {
-                logger.LogWarning(ex, "Erro de validação ao adicionar interação ao chamado {ChamadoId}", id);
+                logger.LogWarning(ex, "Erro de validação ao adicionar interação ao chamado {ChamadoId}: {Message}", id, ex.Message);
                 return BadRequest(new { message = ex.Message });
             }
             catch (UnauthorizedAccessException ex)
             {
-                logger.LogError(ex, "Erro de autorização ao adicionar interação ao chamado {ChamadoId}", id);
+                logger.LogError(ex, "Erro de autorização ao adicionar interação ao chamado {ChamadoId}: {Message}", id, ex.Message);
                 return StatusCode(403, new { message = ex.Message });
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Erro ao adicionar interação ao chamado {ChamadoId}", id);
-                return StatusCode(500, new { message = "Erro ao adicionar interação.", error = ex.Message });
+                logger.LogError(ex, "Erro inesperado ao adicionar interação ao chamado {ChamadoId}. Tipo: {Type}, Message: {Message}, StackTrace: {StackTrace}, InnerException: {InnerException}", 
+                    id, ex.GetType().Name, ex.Message, ex.StackTrace, ex.InnerException?.Message);
+                return StatusCode(500, new { message = "Erro ao adicionar interação.", error = ex.Message, innerError = ex.InnerException?.Message });
             }
         }
 

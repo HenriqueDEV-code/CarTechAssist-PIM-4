@@ -239,22 +239,59 @@ namespace CarTechAssist.Application.Services
         {
             var interacoes = await _chamadosRepository.ListarInteracoesAsync(chamadoId, tenantId, ct);
 
+            // Buscar nomes dos usuários em lote para melhor performance
+            var usuarioIds = interacoes
+                .Where(i => i.AutorUsuarioId.HasValue)
+                .Select(i => i.AutorUsuarioId!.Value)
+                .Distinct()
+                .ToList();
 
-            return interacoes.Select(i => new InteracaoDto(
-                i.InteracaoId,
-                i.ChamadoId,
-                i.AutorUsuarioId,
-                GetAutorNome(i.AutorTipoUsuarioId, i.AutorUsuarioId), // Nome baseado no tipo
-                (byte)i.AutorTipoUsuarioId,
-                (byte)i.CanalId,
-                i.Mensagem,
-                i.Interna,
-                i.IA_Gerada,
-                i.IA_Modelo,
-                i.IA_Confianca,
-                i.IA_ResumoRaciocinio,
-                i.DataCriacao
-            )).ToList();
+            var usuarios = new Dictionary<int, string>();
+            foreach (var usuarioId in usuarioIds)
+            {
+                try
+                {
+                    var usuario = await _usuariosRepository.ObterPorIdAsync(usuarioId, ct);
+                    if (usuario != null && usuario.TenantId == tenantId)
+                    {
+                        usuarios[usuarioId] = usuario.NomeCompleto;
+                    }
+                }
+                catch
+                {
+                    // Se não conseguir buscar, não adiciona ao dicionário
+                }
+            }
+
+            return interacoes.Select(i => 
+            {
+                string? autorNome = null;
+                if (i.AutorUsuarioId.HasValue && usuarios.TryGetValue(i.AutorUsuarioId.Value, out var nome))
+                {
+                    autorNome = nome;
+                }
+                
+                if (string.IsNullOrEmpty(autorNome))
+                {
+                    autorNome = GetAutorNome(i.AutorTipoUsuarioId, i.AutorUsuarioId);
+                }
+
+                return new InteracaoDto(
+                    i.InteracaoId,
+                    i.ChamadoId,
+                    i.AutorUsuarioId,
+                    autorNome,
+                    (byte)i.AutorTipoUsuarioId,
+                    (byte)i.CanalId,
+                    i.Mensagem,
+                    i.Interna,
+                    i.IA_Gerada,
+                    i.IA_Modelo,
+                    i.IA_Confianca,
+                    i.IA_ResumoRaciocinio,
+                    i.DataCriacao
+                );
+            }).ToList();
         }
 
         private static string GetAutorNome(Domain.Enums.TipoUsuarios tipoUsuario, int? usuarioId)
@@ -271,35 +308,55 @@ namespace CarTechAssist.Application.Services
             return usuarioId.HasValue ? $"{tipoNome} #{usuarioId}" : tipoNome;
         }
 
-        public async Task<ChamadoDetailDto> AdicionarInteracaoAsync(
+        public async Task<InteracaoDto> AdicionarInteracaoAsync(
             int tenantId,
             long chamadoId,
             int usuarioId,
             AdicionarInteracaoRequest request,
             CancellationToken ct)
         {
-
             var mensagemSanitizada = _inputSanitizer?.SanitizePreservingLineBreaks(request.Mensagem) ?? request.Mensagem;
             
-            var chamado = await _chamadosRepository.AdicionarInteracaoAsync(
+            var interacao = await _chamadosRepository.AdicionarInteracaoAsync(
                 chamadoId, tenantId, usuarioId, mensagemSanitizada, ct);
 
-            return new ChamadoDetailDto(
-                chamado.ChamadoId,
-                chamado.Numero,
-                chamado.Titulo,
-                chamado.Descricao,
-                chamado.CategoriaId,
-                (byte)chamado.StatusId,
-                (byte)chamado.PrioridadeId,
-                (byte)chamado.CanalId,
-                chamado.SolicitanteUsuarioId,
-                chamado.ResponsavelUsuarioId,
-                chamado.DataCriacao,
-                chamado.DataAtualizacao,
-                EnumHelperService.GetStatusNome(chamado.StatusId),
-                EnumHelperService.GetPrioridadeNome(chamado.PrioridadeId),
-                EnumHelperService.GetCanalNome(chamado.CanalId)
+            // Buscar nome do autor do usuário
+            string? autorNome = null;
+            if (interacao.AutorUsuarioId.HasValue)
+            {
+                try
+                {
+                    var usuario = await _usuariosRepository.ObterPorIdAsync(interacao.AutorUsuarioId.Value, ct);
+                    if (usuario != null && usuario.TenantId == tenantId)
+                    {
+                        autorNome = usuario.NomeCompleto;
+                    }
+                }
+                catch
+                {
+                    // Se não conseguir buscar, usa o nome baseado no tipo
+                }
+            }
+
+            if (string.IsNullOrEmpty(autorNome))
+            {
+                autorNome = GetAutorNome(interacao.AutorTipoUsuarioId, interacao.AutorUsuarioId);
+            }
+
+            return new InteracaoDto(
+                interacao.InteracaoId,
+                interacao.ChamadoId,
+                interacao.AutorUsuarioId,
+                autorNome,
+                (byte)interacao.AutorTipoUsuarioId,
+                (byte)interacao.CanalId,
+                interacao.Mensagem,
+                interacao.Interna,
+                interacao.IA_Gerada,
+                interacao.IA_Modelo,
+                interacao.IA_Confianca,
+                interacao.IA_ResumoRaciocinio,
+                interacao.DataCriacao
             );
         }
 

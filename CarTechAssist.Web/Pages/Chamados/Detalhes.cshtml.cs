@@ -148,6 +148,62 @@ namespace CarTechAssist.Web.Pages.Chamados
         }
 
         /// <summary>
+        /// Handler GET - Busca novas interações do chamado (para atualização automática).
+        /// Retorna apenas interações com ID maior que o último ID conhecido.
+        /// </summary>
+        /// <param name="id">ID do chamado</param>
+        /// <param name="ultimoInteracaoId">ID da última interação conhecida (opcional)</param>
+        /// <param name="ct">Token de cancelamento</param>
+        /// <returns>JSON com lista de novas interações</returns>
+        public async Task<IActionResult> OnGetNovasInteracoesAsync(long id, long? ultimoInteracaoId = null, CancellationToken ct = default)
+        {
+            // Validação de autenticação
+            var token = HttpContext.Session.GetString("Token");
+            if (string.IsNullOrEmpty(token))
+            {
+                return new JsonResult(new { success = false, message = "Sessão expirada." }) { StatusCode = 401 };
+            }
+
+            try
+            {
+                var interacoes = await _chamadosService.ListarInteracoesAsync(id, ct);
+                
+                if (interacoes == null)
+                {
+                    return new JsonResult(new { success = true, interacoes = new List<object>() });
+                }
+
+                // Se foi fornecido um último ID, filtrar apenas as novas
+                var novasInteracoes = ultimoInteracaoId.HasValue
+                    ? interacoes.Where(i => i.InteracaoId > ultimoInteracaoId.Value).ToList()
+                    : interacoes.ToList();
+
+                // Buscar também o status atualizado do chamado
+                var chamado = await _chamadosService.ObterAsync(id, ct);
+
+                return new JsonResult(new
+                {
+                    success = true,
+                    interacoes = novasInteracoes.Select(i => new
+                    {
+                        interacaoId = i.InteracaoId,
+                        autorNome = i.AutorNome ?? "Usuário",
+                        mensagem = i.Mensagem,
+                        dataCriacao = i.DataCriacao.ToString("dd/MM/yyyy HH:mm"),
+                        iaGerada = i.IA_Gerada
+                    }).ToList(),
+                    statusId = chamado?.StatusId,
+                    statusNome = chamado?.StatusNome
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Erro ao buscar novas interações do chamado {ChamadoId}", id);
+                return new JsonResult(new { success = false, message = "Erro ao buscar novas mensagens." }) { StatusCode = 500 };
+            }
+        }
+
+        /// <summary>
         /// Handler POST - Adiciona uma nova interação (mensagem) ao chamado.
         /// Chamado via AJAX quando o usuário envia uma mensagem no chat.
         /// </summary>
@@ -161,28 +217,59 @@ namespace CarTechAssist.Web.Pages.Chamados
             var token = HttpContext.Session.GetString("Token");
             if (string.IsNullOrEmpty(token))
             {
-                return RedirectToPage("/Login");
+                return new JsonResult(new { success = false, message = "Sessão expirada. Por favor, faça login novamente." }) { StatusCode = 401 };
             }
 
             // Validação da mensagem
             if (string.IsNullOrWhiteSpace(mensagem))
             {
-                return BadRequest("Mensagem não pode estar vazia.");
+                return new JsonResult(new { success = false, message = "Mensagem não pode estar vazia." }) { StatusCode = 400 };
             }
 
             try
             {
                 // Cria o request e envia para a API
                 var request = new AdicionarInteracaoRequest(mensagem);
-                await _chamadosService.AdicionarInteracaoAsync(id, request, ct);
+                var interacao = await _chamadosService.AdicionarInteracaoAsync(id, request, ct);
                 
-                // Redireciona para recarregar a página com a nova mensagem
-                return RedirectToPage("/Chamados/Detalhes", new { id });
+                if (interacao == null)
+                {
+                    _logger.LogWarning("API retornou null ao adicionar interação. ChamadoId: {ChamadoId}", id);
+                    return new JsonResult(new { success = false, message = "Erro ao enviar mensagem. Resposta vazia da API." }) { StatusCode = 500 };
+                }
+
+                // Retorna JSON com a interação criada para atualizar o chat dinamicamente
+                return new JsonResult(new { 
+                    success = true, 
+                    message = "Mensagem enviada com sucesso.",
+                    interacao = new {
+                        interacaoId = interacao.InteracaoId,
+                        autorNome = interacao.AutorNome ?? "Usuário",
+                        mensagem = interacao.Mensagem,
+                        dataCriacao = interacao.DataCriacao.ToString("dd/MM/yyyy HH:mm"),
+                        iaGerada = interacao.IA_Gerada
+                    }
+                });
+            }
+            catch (System.Net.Http.HttpRequestException httpEx)
+            {
+                _logger.LogError(httpEx, "Erro HTTP ao adicionar interação ao chamado {ChamadoId}", id);
+                
+                var statusCode = System.Net.HttpStatusCode.InternalServerError;
+                if (httpEx.Data.Contains("StatusCode") && httpEx.Data["StatusCode"] is System.Net.HttpStatusCode sc)
+                {
+                    statusCode = sc;
+                }
+                
+                var apiMessage = httpEx.Data.Contains("Message") ? httpEx.Data["Message"]?.ToString() : null;
+                var errorMessage = !string.IsNullOrEmpty(apiMessage) ? apiMessage : "Erro ao enviar mensagem. Tente novamente.";
+                
+                return new JsonResult(new { success = false, message = errorMessage }) { StatusCode = (int)statusCode };
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Erro ao adicionar interação ao chamado {ChamadoId}", id);
-                return BadRequest("Erro ao enviar mensagem. Tente novamente.");
+                _logger.LogError(ex, "Erro ao adicionar interação ao chamado {ChamadoId}: {Message}", id, ex.Message);
+                return new JsonResult(new { success = false, message = $"Erro ao enviar mensagem: {ex.Message}" }) { StatusCode = 500 };
             }
         }
 
