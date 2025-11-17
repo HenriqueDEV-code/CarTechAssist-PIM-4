@@ -138,8 +138,8 @@ namespace CarTechAssist.Api.Controllers
                 Request.Body.Position = 0;
                 
                 logger.LogWarning("🔍 CRIAR USUARIO - Body recebido: {Body}", bodyContent);
-                logger.LogWarning("🔍 CRIAR USUARIO - Request deserializado: Login={Login}, TipoUsuarioId={TipoUsuarioId}", 
-                    request?.Login, request?.TipoUsuarioId);
+                logger.LogWarning("🔍 CRIAR USUARIO - Request deserializado: Login={Login}, NomeCompleto={NomeCompleto}, Email='{Email}', Telefone='{Telefone}', TipoUsuarioId={TipoUsuarioId}, Senha={HasSenha}", 
+                    request?.Login, request?.NomeCompleto, request?.Email ?? "NULL", request?.Telefone ?? "NULL", request?.TipoUsuarioId, !string.IsNullOrEmpty(request?.Senha));
                 logger.LogWarning("🔍 CRIAR USUARIO - Headers: X-Tenant-Id={TenantId}, Authorization={HasAuth}",
                     Request.Headers["X-Tenant-Id"].FirstOrDefault(),
                     Request.Headers.ContainsKey("Authorization"));
