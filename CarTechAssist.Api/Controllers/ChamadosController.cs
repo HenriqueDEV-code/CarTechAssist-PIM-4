@@ -382,27 +382,93 @@ namespace CarTechAssist.Api.Controllers
         [Microsoft.AspNetCore.Authorization.Authorize]
         public async Task<IActionResult> AlterarStatus(
             long id,
-            [FromBody] AlterarStatusRequest request,
+            [FromBody] AlterarStatusRequest? request,
             CancellationToken ct = default)
         {
+            var logger = HttpContext.RequestServices.GetRequiredService<ILogger<ChamadosController>>();
+            
             try
             {
+                // Validação do request
+                if (request == null)
+                {
+                    logger.LogWarning("Request nulo ao alterar status do chamado {ChamadoId}", id);
+                    return BadRequest(new { message = "Request inválido. O corpo da requisição não pode estar vazio. Envie um JSON com o campo 'novoStatus' (ou 'NovoStatus')." });
+                }
 
+                // Validação do novoStatus
+                if (request.NovoStatus < 1 || request.NovoStatus > 6)
+                {
+                    logger.LogWarning("Status inválido ao alterar status do chamado {ChamadoId}. NovoStatus: {NovoStatus}", id, request.NovoStatus);
+                    return BadRequest(new { message = $"Status inválido: {request.NovoStatus}. O status deve estar entre 1 e 6." });
+                }
+
+                // Validação de autenticação
+                if (User?.Identity?.IsAuthenticated != true)
+                {
+                    logger.LogWarning("Tentativa de alterar status sem autenticação. ChamadoId: {ChamadoId}", id);
+                    return Unauthorized(new { message = "Não autenticado. Faça login primeiro." });
+                }
+
+                // Validação de permissão
                 var tipoUsuarioIdStr = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value;
                 if (!byte.TryParse(tipoUsuarioIdStr, out var tipoUsuarioId) || (tipoUsuarioId != 2 && tipoUsuarioId != 3))
                 {
-                    return StatusCode(403, new { message = "Apenas técnicos podem alterar o status do chamado." });
+                    logger.LogWarning("Tentativa de alterar status sem permissão. ChamadoId: {ChamadoId}, TipoUsuarioId: {TipoUsuarioId}", id, tipoUsuarioIdStr);
+                    return StatusCode(403, new { message = "Apenas técnicos e administradores podem alterar o status do chamado." });
                 }
 
+                // Obter TenantId e UsuarioId
+                int tenantId;
+                int usuarioId;
+                try
+                {
+                    tenantId = GetTenantId();
+                    usuarioId = GetUsuarioId();
+                }
+                catch (UnauthorizedAccessException ex)
+                {
+                    logger.LogWarning(ex, "Erro ao obter TenantId/UsuarioId ao alterar status do chamado {ChamadoId}: {Message}", id, ex.Message);
+                    return Unauthorized(new { message = ex.Message });
+                }
+                
+                logger.LogInformation("Alterando status do chamado {ChamadoId}. TenantId: {TenantId}, UsuarioId: {UsuarioId}, NovoStatus: {NovoStatus}", 
+                    id, tenantId, usuarioId, request.NovoStatus);
+
+                // Chamar o serviço
                 var result = await _chamadosService.AlterarStatusAsync(
-                    GetTenantId(), id, GetUsuarioId(), request, ct);
+                    tenantId, id, usuarioId, request, ct);
+                
+                if (result == null)
+                {
+                    logger.LogError("Serviço retornou null ao alterar status do chamado {ChamadoId}", id);
+                    return StatusCode(500, new { message = "Erro ao alterar status. O serviço retornou null." });
+                }
+                    
+                logger.LogInformation("Status do chamado {ChamadoId} alterado com sucesso para {NovoStatus}. Novo StatusId: {StatusId}", 
+                    id, request.NovoStatus, result.StatusId);
                 return Ok(result);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                logger.LogWarning(ex, "Erro de autorização ao alterar status do chamado {ChamadoId}: {Message}", id, ex.Message);
+                return StatusCode(403, new { message = ex.Message });
+            }
+            catch (ArgumentException ex)
+            {
+                logger.LogWarning(ex, "Erro de validação ao alterar status do chamado {ChamadoId}: {Message}", id, ex.Message);
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                logger.LogError(ex, "Erro de operação ao alterar status do chamado {ChamadoId}: {Message}", id, ex.Message);
+                return StatusCode(500, new { message = ex.Message });
             }
             catch (Exception ex)
             {
-                var logger = HttpContext.RequestServices.GetRequiredService<ILogger<ChamadosController>>();
-                logger.LogError(ex, "Erro ao alterar status do chamado {ChamadoId}", id);
-                return StatusCode(500, new { message = "Erro ao alterar status do chamado.", error = ex.Message });
+                logger.LogError(ex, "Erro inesperado ao alterar status do chamado {ChamadoId}. Tipo: {Type}, Message: {Message}, StackTrace: {StackTrace}, InnerException: {InnerException}", 
+                    id, ex.GetType().Name, ex.Message, ex.StackTrace, ex.InnerException?.Message);
+                return StatusCode(500, new { message = "Erro ao alterar status do chamado.", error = ex.Message, innerError = ex.InnerException?.Message });
             }
         }
 

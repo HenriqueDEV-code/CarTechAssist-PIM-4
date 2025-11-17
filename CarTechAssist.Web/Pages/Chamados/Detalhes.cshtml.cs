@@ -12,6 +12,7 @@ namespace CarTechAssist.Web.Pages.Chamados
     public class DetalhesModel : PageModel
     {
         private readonly ChamadosService _chamadosService;
+        private readonly UsuariosService _usuariosService;
         private readonly ILogger<DetalhesModel> _logger;
 
         // Propriedades públicas para uso na view
@@ -22,13 +23,15 @@ namespace CarTechAssist.Web.Pages.Chamados
         public int TenantId { get; set; }                            // ID do tenant (multi-tenant)
         public int UsuarioId { get; set; }                           // ID do usuário logado
         public byte TipoUsuarioId { get; set; }                      // Tipo do usuário (1=Cliente, 2=Técnico, 3=Admin)
+        public string? SolicitanteNome { get; set; }                 // Nome do usuário que abriu o chamado
 
         /// <summary>
         /// Construtor - Injeção de dependências
         /// </summary>
-        public DetalhesModel(ChamadosService chamadosService, ILogger<DetalhesModel> logger)
+        public DetalhesModel(ChamadosService chamadosService, UsuariosService usuariosService, ILogger<DetalhesModel> logger)
         {
             _chamadosService = chamadosService;
+            _usuariosService = usuariosService;
             _logger = logger;
         }
 
@@ -78,6 +81,18 @@ namespace CarTechAssist.Web.Pages.Chamados
                 {
                     ErrorMessage = "Chamado não encontrado.";
                     return RedirectToPage("/Chamados");
+                }
+
+                // Busca o nome do usuário solicitante
+                try
+                {
+                    var solicitante = await _usuariosService.ObterAsync(Chamado.SolicitanteUsuarioId, ct);
+                    SolicitanteNome = solicitante?.NomeCompleto ?? "Usuário não encontrado";
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Erro ao buscar nome do solicitante {SolicitanteUsuarioId}", Chamado.SolicitanteUsuarioId);
+                    SolicitanteNome = "Usuário não encontrado";
                 }
 
                 // Carrega as interações (mensagens/chat) do chamado
@@ -140,7 +155,6 @@ namespace CarTechAssist.Web.Pages.Chamados
         /// <param name="mensagem">Texto da mensagem a ser enviada</param>
         /// <param name="ct">Token de cancelamento</param>
         /// <returns>Redirecionamento para a página de detalhes ou erro</returns>
-        [Microsoft.AspNetCore.Mvc.ValidateAntiForgeryToken]
         public async Task<IActionResult> OnPostAdicionarInteracaoAsync(long id, [FromForm] string mensagem, CancellationToken ct = default)
         {
             // Validação de autenticação
@@ -181,7 +195,6 @@ namespace CarTechAssist.Web.Pages.Chamados
         /// <param name="arquivo">Arquivo a ser enviado (IFormFile)</param>
         /// <param name="ct">Token de cancelamento</param>
         /// <returns>Redirecionamento para a página de detalhes ou erro</returns>
-        [Microsoft.AspNetCore.Mvc.ValidateAntiForgeryToken]
         public async Task<IActionResult> OnPostUploadAnexoAsync(long id, IFormFile arquivo, CancellationToken ct = default)
         {
             // Validação de autenticação
@@ -288,6 +301,132 @@ namespace CarTechAssist.Web.Pages.Chamados
                 3 => "bg-warning text-dark",    // Alta - amarelo
                 4 => "bg-warning text-dark",    // Urgente - amarelo conforme imagem
                 _ => "bg-secondary text-white"  // Padrão
+            };
+        }
+
+        /// <summary>
+        /// Handler POST - Altera o status do chamado.
+        /// Chamado via AJAX quando o usuário altera o status no ComboBox.
+        /// </summary>
+        /// <param name="id">ID do chamado</param>
+        /// <param name="novoStatus">Novo status do chamado (byte)</param>
+        /// <param name="ct">Token de cancelamento</param>
+        /// <returns>JSON com resultado ou erro</returns>
+        public async Task<IActionResult> OnPostAlterarStatusAsync(long id, [FromForm] byte novoStatus, CancellationToken ct = default)
+        {
+            try
+            {
+                // Verifica se a sessão está disponível
+                if (HttpContext.Session == null)
+                {
+                    _logger.LogError("Sessão não disponível ao alterar status do chamado {ChamadoId}", id);
+                    return new JsonResult(new { success = false, message = "Erro: Sessão não disponível." }) { StatusCode = 500 };
+                }
+
+                // Validação de autenticação
+                var token = HttpContext.Session.GetString("Token");
+                var tenantIdStr = HttpContext.Session.GetString("TenantId");
+                var usuarioIdStr = HttpContext.Session.GetString("UsuarioId");
+                var tipoUsuarioIdStr = HttpContext.Session.GetString("TipoUsuarioId");
+                
+                if (string.IsNullOrEmpty(token))
+                {
+                    _logger.LogWarning("Tentativa de alterar status sem token. ChamadoId: {ChamadoId}", id);
+                    return new JsonResult(new { success = false, message = "Sessão expirada. Por favor, faça login novamente." }) { StatusCode = 401 };
+                }
+
+                // Validação de permissão - apenas Técnicos e Administradores podem alterar status
+                if (!byte.TryParse(tipoUsuarioIdStr, out var tipoUsuarioId) || (tipoUsuarioId != 2 && tipoUsuarioId != 3))
+                {
+                    _logger.LogWarning("Tentativa de alterar status sem permissão. UsuarioId: {UsuarioId}, TipoUsuarioId: {TipoUsuarioId}, ChamadoId: {ChamadoId}", 
+                        usuarioIdStr, tipoUsuarioIdStr, id);
+                    return new JsonResult(new { success = false, message = "Apenas técnicos e administradores podem alterar o status do chamado." }) { StatusCode = 403 };
+                }
+
+                // Validação do status (1-6)
+                if (novoStatus < 1 || novoStatus > 6)
+                {
+                    _logger.LogWarning("Status inválido recebido. ChamadoId: {ChamadoId}, NovoStatus: {NovoStatus}", id, novoStatus);
+                    return new JsonResult(new { success = false, message = $"Status inválido: {novoStatus}. O status deve estar entre 1 e 6." }) { StatusCode = 400 };
+                }
+                
+                _logger.LogInformation("Iniciando alteração de status. ChamadoId: {ChamadoId}, NovoStatus: {NovoStatus}, UsuarioId: {UsuarioId}, TenantId: {TenantId}", 
+                    id, novoStatus, usuarioIdStr, tenantIdStr);
+
+                // Cria o request e envia para a API
+                var request = new AlterarStatusRequest(novoStatus);
+                _logger.LogInformation("Enviando requisição para API. ChamadoId: {ChamadoId}, Request: NovoStatus={NovoStatus}", id, novoStatus);
+                
+                var resultado = await _chamadosService.AlterarStatusAsync(id, request, ct);
+                
+                if (resultado == null)
+                {
+                    _logger.LogWarning("API retornou null ao alterar status. ChamadoId: {ChamadoId}", id);
+                    return new JsonResult(new { success = false, message = "Erro ao alterar status. Resposta vazia da API." }) { StatusCode = 500 };
+                }
+                
+                _logger.LogInformation("Status do chamado {ChamadoId} alterado com sucesso para {NovoStatus}. Novo StatusId: {StatusId}", 
+                    id, novoStatus, resultado.StatusId);
+                return new JsonResult(new { success = true, message = "Status alterado com sucesso." });
+            }
+            catch (System.Net.Http.HttpRequestException httpEx)
+            {
+                _logger.LogError(httpEx, "Erro HTTP ao alterar status do chamado {ChamadoId}. Message: {Message}, StackTrace: {StackTrace}", 
+                    id, httpEx.Message, httpEx.StackTrace);
+                
+                // Extrai o status code do erro
+                var statusCode = System.Net.HttpStatusCode.InternalServerError;
+                if (httpEx.Data.Contains("StatusCode") && httpEx.Data["StatusCode"] is System.Net.HttpStatusCode sc)
+                {
+                    statusCode = sc;
+                }
+                
+                // Tenta extrair mensagem da API
+                var apiMessage = httpEx.Data.Contains("Message") ? httpEx.Data["Message"]?.ToString() : null;
+                var responseContent = httpEx.Data.Contains("ResponseContent") ? httpEx.Data["ResponseContent"]?.ToString() : null;
+                
+                // Log detalhado do erro
+                _logger.LogError("Detalhes do erro HTTP - StatusCode: {StatusCode}, ApiMessage: {ApiMessage}, ResponseContent: {ResponseContent}", 
+                    statusCode, apiMessage, responseContent);
+                
+                var errorMessage = !string.IsNullOrEmpty(apiMessage) ? apiMessage : 
+                                  (!string.IsNullOrEmpty(responseContent) ? responseContent : httpEx.Message);
+                
+                // Retorna o status code correto
+                return new JsonResult(new { success = false, message = errorMessage }) { StatusCode = (int)statusCode };
+            }
+            catch (System.ArgumentNullException argEx)
+            {
+                _logger.LogError(argEx, "Argumento nulo ao alterar status do chamado {ChamadoId}. ParamName: {ParamName}", id, argEx.ParamName);
+                return new JsonResult(new { success = false, message = $"Erro: {argEx.Message}" }) { StatusCode = 400 };
+            }
+            catch (System.InvalidOperationException invOpEx)
+            {
+                _logger.LogError(invOpEx, "Operação inválida ao alterar status do chamado {ChamadoId}. Message: {Message}", id, invOpEx.Message);
+                return new JsonResult(new { success = false, message = $"Erro: {invOpEx.Message}" }) { StatusCode = 500 };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Erro inesperado ao alterar status do chamado {ChamadoId}. Tipo: {Type}, Message: {Message}, StackTrace: {StackTrace}, InnerException: {InnerException}", 
+                    id, ex.GetType().Name, ex.Message, ex.StackTrace, ex.InnerException?.Message);
+                return new JsonResult(new { success = false, message = $"Erro ao alterar status: {ex.Message}", innerError = ex.InnerException?.Message }) { StatusCode = 500 };
+            }
+        }
+
+        /// <summary>
+        /// Retorna a lista de status disponíveis para o ComboBox.
+        /// </summary>
+        /// <returns>Lista de tuplas (valor, nome) dos status</returns>
+        public List<(byte Value, string Name)> GetStatusList()
+        {
+            return new List<(byte, string)>
+            {
+                (1, "Aberto"),
+                (2, "Em Andamento"),
+                (3, "Pendente"),
+                (4, "Resolvido"),
+                (5, "Fechado"),
+                (6, "Cancelado")
             };
         }
 

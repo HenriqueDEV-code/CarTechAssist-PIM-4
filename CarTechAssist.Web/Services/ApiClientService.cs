@@ -194,16 +194,32 @@ namespace CarTechAssist.Web.Services
 
         public async Task<T?> PatchAsync<T>(string endpoint, object? data = null, CancellationToken ct = default)
         {
-
             var json = data != null ? JsonSerializer.Serialize(data, _jsonOptions) : null;
             var content = json != null ? new StringContent(json, Encoding.UTF8, "application/json") : null;
             
             var request = new HttpRequestMessage(HttpMethod.Patch, endpoint) { Content = content };
             SetHeaders(request);
-            var response = await _httpClient.SendAsync(request, ct);
-            await EnsureSuccessStatusCode(response);
             
+            if (data != null)
+            {
+                _logger?.LogInformation("🔍 PATCH {Endpoint} - JSON enviado: {Json}", endpoint, json);
+                _logger?.LogInformation("🔍 PATCH {Endpoint} - Headers: Authorization={HasAuth}, X-Tenant-Id={HasTenantId}", 
+                    endpoint, request.Headers.Authorization != null, request.Headers.Contains("X-Tenant-Id"));
+            }
+            
+            var response = await _httpClient.SendAsync(request, ct);
             var responseContent = await response.Content.ReadAsStringAsync(ct);
+            
+            var responsePreview = responseContent?.Length > 500 ? responseContent.Substring(0, 500) + "..." : responseContent;
+            _logger?.LogInformation("🔍 PATCH {Endpoint} - Status: {StatusCode}, Response: {Response}", 
+                endpoint, response.StatusCode, responsePreview);
+            
+            if (!response.IsSuccessStatusCode)
+            {
+                await EnsureSuccessStatusCode(response, responseContent);
+                return default; // Nunca chega aqui, mas compilador precisa
+            }
+            
             return string.IsNullOrEmpty(responseContent) ? default : JsonSerializer.Deserialize<T>(responseContent, _jsonOptions);
         }
 

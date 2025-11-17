@@ -218,21 +218,90 @@ namespace CarTechAssist.Infrastruture.Repositories
             int usuarioId,
             CancellationToken ct)
         {
-            const string sql = @"
-                EXEC core.usp_Chamado_AlterarStatus
-                    @ChamadoId = @chamadoId,
-                    @TenantId = @tenantId,
-                    @NovoStatus = @novoStatus,
-                    @UsuarioId = @usuarioId";
+            // Garantir que a conexão está aberta
+            if (_db.State != ConnectionState.Open)
+            {
+                _db.Open();
+            }
+
+            // Primeiro, verificar se o chamado existe e pertence ao tenant, e obter o status atual
+            const string checkSql = @"
+                SELECT ChamadoId, TenantId, StatusId 
+                FROM core.Chamado 
+                WHERE ChamadoId = @chamadoId AND TenantId = @tenantId AND Excluido = 0";
+
+            var chamadoExistente = await _db.QueryFirstOrDefaultAsync<dynamic>(
+                new CommandDefinition(checkSql, new { chamadoId, tenantId }, cancellationToken: ct));
+
+            if (chamadoExistente == null)
+            {
+                throw new InvalidOperationException($"Chamado {chamadoId} não encontrado ou não pertence ao tenant {tenantId}.");
+            }
+
+            var statusAtual = (byte)chamadoExistente.StatusId;
+
+            // Atualizar o status do chamado
+            // Se o novo status for Resolvido (4) e o atual não for, atualizar DataResolvido
+            // Se o novo status for Fechado (5) e o atual não for, atualizar DataFechado
+            string updateSql;
+            if (novoStatus == 4 && statusAtual != 4)
+            {
+                // Mudando para Resolvido - atualizar DataResolvido
+                updateSql = @"
+                    UPDATE core.Chamado 
+                    SET StatusId = @novoStatus,
+                        DataAtualizacao = GETUTCDATE(),
+                        DataResolvido = GETUTCDATE()
+                    WHERE ChamadoId = @chamadoId 
+                        AND TenantId = @tenantId 
+                        AND Excluido = 0";
+            }
+            else if (novoStatus == 5 && statusAtual != 5)
+            {
+                // Mudando para Fechado - atualizar DataFechado
+                updateSql = @"
+                    UPDATE core.Chamado 
+                    SET StatusId = @novoStatus,
+                        DataAtualizacao = GETUTCDATE(),
+                        DataFechado = GETUTCDATE()
+                    WHERE ChamadoId = @chamadoId 
+                        AND TenantId = @tenantId 
+                        AND Excluido = 0";
+            }
+            else
+            {
+                // Outros status - apenas atualizar StatusId e DataAtualizacao
+                updateSql = @"
+                    UPDATE core.Chamado 
+                    SET StatusId = @novoStatus,
+                        DataAtualizacao = GETUTCDATE()
+                    WHERE ChamadoId = @chamadoId 
+                        AND TenantId = @tenantId 
+                        AND Excluido = 0";
+            }
 
             var parameters = new DynamicParameters();
             parameters.Add("chamadoId", chamadoId);
             parameters.Add("tenantId", tenantId);
             parameters.Add("novoStatus", novoStatus);
-            parameters.Add("usuarioId", usuarioId);
 
-            return await _db.QueryFirstAsync<Chamado>(
-                new CommandDefinition(sql, parameters, cancellationToken: ct));
+            var rowsAffected = await _db.ExecuteAsync(
+                new CommandDefinition(updateSql, parameters, cancellationToken: ct));
+
+            if (rowsAffected == 0)
+            {
+                throw new InvalidOperationException($"Não foi possível alterar o status do chamado {chamadoId}.");
+            }
+
+            // Retornar o chamado atualizado
+            const string selectSql = @"
+                SELECT * FROM core.vw_chamados 
+                WHERE ChamadoId = @chamadoId";
+
+            var chamadoAtualizado = await _db.QueryFirstAsync<Chamado>(
+                new CommandDefinition(selectSql, new { chamadoId }, cancellationToken: ct));
+
+            return chamadoAtualizado;
         }
 
         public async Task AdicionarAnexoAsync(

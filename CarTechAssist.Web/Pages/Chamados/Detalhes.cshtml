@@ -54,13 +54,35 @@
                         <div class="col-md-6 mb-3">
                             <strong>Título:</strong> @Model.Chamado.Titulo
                         </div>
-                        <div class="col-md-3 mb-3">
-                            <strong>Status:</strong>
-                            <span class="badge @Model.GetStatusBadgeClass(Model.Chamado.StatusId) ms-2">
-                                @Model.Chamado.StatusNome
-                            </span>
+                        <div class="col-md-6 mb-3">
+                            <strong>Usuário que abriu o chamado:</strong> @(Model.SolicitanteNome ?? "Não informado")
                         </div>
-                        <div class="col-md-3 mb-3">
+                        <div class="col-md-6 mb-3">
+                            <strong>Status:</strong>
+                            @if (Model.TipoUsuarioId == 2 || Model.TipoUsuarioId == 3)
+                            {
+                                <select id="statusSelect" class="form-select d-inline-block ms-2" style="width: auto; display: inline-block !important;">
+                                    @foreach (var status in Model.GetStatusList())
+                                    {
+                                        @if (status.Value == Model.Chamado.StatusId)
+                                        {
+                                            <option value="@status.Value" selected>@status.Name</option>
+                                        }
+                                        else
+                                        {
+                                            <option value="@status.Value">@status.Name</option>
+                                        }
+                                    }
+                                </select>
+                            }
+                            else
+                            {
+                                <span class="badge @Model.GetStatusBadgeClass(Model.Chamado.StatusId) ms-2">
+                                    @Model.Chamado.StatusNome
+                                </span>
+                            }
+                        </div>
+                        <div class="col-md-6 mb-3">
                             <strong>Prioridade:</strong>
                             <span class="badge @Model.GetPrioridadeBadgeClass(Model.Chamado.PrioridadeId) ms-2">
                                 @Model.Chamado.PrioridadeNome
@@ -335,6 +357,85 @@
         const chatMessages = document.getElementById('chatMessages');
         if (chatMessages) {
             chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        // Alterar status do chamado
+        const statusSelect = document.getElementById('statusSelect');
+        if (statusSelect) {
+            statusSelect.addEventListener('change', async function() {
+                const novoStatus = parseInt(this.value);
+                const statusAnterior = @(Model.Chamado?.StatusId ?? 1);
+                
+                // Se não mudou, não faz nada
+                if (novoStatus === statusAnterior) {
+                    return;
+                }
+
+                // Confirmação antes de alterar
+                const statusNome = this.options[this.selectedIndex].text;
+                if (!confirm(`Deseja realmente alterar o status para "${statusNome}"?`)) {
+                    // Reverte para o status anterior
+                    this.value = statusAnterior;
+                    return;
+                }
+
+                // Desabilita o select durante o processamento
+                this.disabled = true;
+                const selectOriginal = this.innerHTML;
+
+                try {
+                    const formData = new FormData();
+                    formData.append('novoStatus', novoStatus);
+                    formData.append('__RequestVerificationToken', getAntiForgeryToken());
+                    
+                    const response = await fetch(`/Chamados/Detalhes/${chamadoId}?handler=AlterarStatus`, {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    // Verifica se a resposta é JSON
+                    let result;
+                    const contentType = response.headers.get('content-type');
+                    if (contentType && contentType.includes('application/json')) {
+                        result = await response.json();
+                    } else {
+                        const text = await response.text();
+                        throw new Error(text || `Erro HTTP ${response.status}: ${response.statusText}`);
+                    }
+
+                    // Verifica o status HTTP
+                    if (!response.ok) {
+                        // Erro HTTP - reverte o select e exibe mensagem
+                        this.value = statusAnterior;
+                        const errorMsg = result?.message || `Erro ${response.status}: ${response.statusText}`;
+                        
+                        if (response.status === 401) {
+                            alert('Sua sessão expirou. Por favor, faça login novamente.');
+                            // Opcional: redirecionar para login
+                            // window.location.href = '/Login';
+                        } else {
+                            alert(errorMsg);
+                        }
+                        return;
+                    }
+
+                    if (result.success) {
+                        // Sucesso - recarrega a página para atualizar os dados
+                        location.reload();
+                    } else {
+                        // Erro - reverte o select e exibe mensagem
+                        this.value = statusAnterior;
+                        alert(result.message || 'Erro ao alterar status. Tente novamente.');
+                    }
+                } catch (error) {
+                    console.error('Erro:', error);
+                    // Reverte para o status anterior
+                    this.value = statusAnterior;
+                    alert(error.message || 'Erro ao alterar status. Tente novamente.');
+                } finally {
+                    this.disabled = false;
+                }
+            });
         }
     </script>
 }
