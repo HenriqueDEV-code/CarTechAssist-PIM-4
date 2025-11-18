@@ -138,34 +138,90 @@ namespace CarTechAssist.Infrastruture.Repositories
             decimal? custoUsd,
             CancellationToken ct)
         {
-            const string sql = @"
-                EXEC core.usp_Chamado_IA_AdicionarInteracao
-                    @ChamadoId = @chamadoId,
-                    @TenantId = @tenantId,
-                    @Modelo = @modelo,
-                    @Mensagem = @mensagem,
-                    @Confianca = @confianca,
-                    @ResumoRaciocinio = @resumoRaciocinio,
-                    @Provedor = @provedor,
-                    @InputTokens = @inputTokens,
-                    @OutputTokens = @outputTokens,
-                    @CustoUsd = @custoUsd";
+            // Garantir que a conexão está aberta
+            if (_db.State != ConnectionState.Open)
+            {
+                _db.Open();
+            }
+
+            // Verificar se o chamado existe
+            const string checkSql = @"
+                SELECT ChamadoId, TenantId, CanalId
+                FROM core.Chamado 
+                WHERE ChamadoId = @chamadoId AND TenantId = @tenantId AND Excluido = 0";
+
+            var chamadoInfo = await _db.QueryFirstOrDefaultAsync<dynamic>(
+                new CommandDefinition(checkSql, new { chamadoId, tenantId }, cancellationToken: ct));
+
+            if (chamadoInfo == null)
+            {
+                throw new InvalidOperationException($"Chamado {chamadoId} não encontrado ou não pertence ao tenant {tenantId}.");
+            }
+
+            var canalId = (byte)chamadoInfo.CanalId;
+
+            // Buscar usuário Bot para obter o ID
+            const string botSql = @"
+                SELECT TOP 1 UsuarioId, TipoUsuarioId
+                FROM core.Usuario
+                WHERE TenantId = @tenantId AND TipoUsuarioId = 4 AND Excluido = 0 AND Ativo = 1";
+
+            var botInfo = await _db.QueryFirstOrDefaultAsync<dynamic>(
+                new CommandDefinition(botSql, new { tenantId }, cancellationToken: ct));
+
+            if (botInfo == null)
+            {
+                throw new InvalidOperationException($"Usuário Bot não encontrado para o tenant {tenantId}.");
+            }
+
+            var botUsuarioId = (int)botInfo.UsuarioId;
+            var botTipoUsuarioId = (byte)botInfo.TipoUsuarioId;
+
+            // Inserir a interação da IA
+            const string insertSql = @"
+                INSERT INTO core.ChamadoInteracao 
+                    (ChamadoId, TenantId, AutorUsuarioId, AutorTipoUsuarioId, CanalId, Mensagem, 
+                     Interna, IA_Gerada, IA_Modelo, IA_Confianca, IA_ResumoRaciocinio, DataCriacao, Excluido)
+                OUTPUT INSERTED.*
+                VALUES 
+                    (@chamadoId, @tenantId, @botUsuarioId, @botTipoUsuarioId, @canalId, @mensagem,
+                     0, 1, @modelo, @confianca, @resumoRaciocinio, GETUTCDATE(), 0)";
 
             var parameters = new DynamicParameters();
             parameters.Add("chamadoId", chamadoId);
             parameters.Add("tenantId", tenantId);
-            parameters.Add("modelo", modelo);
+            parameters.Add("botUsuarioId", botUsuarioId);
+            parameters.Add("botTipoUsuarioId", botTipoUsuarioId);
+            parameters.Add("canalId", canalId);
             parameters.Add("mensagem", mensagem);
-
+            parameters.Add("modelo", modelo);
             parameters.Add("confianca", confianca);
             parameters.Add("resumoRaciocinio", resumoRaciocinio);
-            parameters.Add("provedor", provedor);
-            parameters.Add("inputTokens", inputTokens);
-            parameters.Add("outputTokens", outputTokens);
-            parameters.Add("custoUsd", custoUsd);
 
-            return await _db.QueryFirstAsync<Chamado>(
-                new CommandDefinition(sql, parameters, cancellationToken: ct));
+            await _db.ExecuteAsync(
+                new CommandDefinition(insertSql, parameters, cancellationToken: ct));
+
+            // Atualizar DataAtualizacao do chamado e campos de IA
+            const string updateChamadoSql = @"
+                UPDATE core.Chamado 
+                SET DataAtualizacao = GETUTCDATE(),
+                    IA_UltimoModelo = @modelo,
+                    IA_UltimaConfianca = @confianca,
+                    IA_AtendidoPorIA = 1
+                WHERE ChamadoId = @chamadoId AND TenantId = @tenantId";
+
+            await _db.ExecuteAsync(
+                new CommandDefinition(updateChamadoSql, new { chamadoId, tenantId, modelo, confianca }, cancellationToken: ct));
+
+            // Retornar o chamado atualizado (usando a tabela diretamente)
+            const string selectSql = @"
+                SELECT * FROM core.Chamado 
+                WHERE ChamadoId = @chamadoId AND TenantId = @tenantId AND Excluido = 0";
+
+            var chamado = await _db.QueryFirstAsync<Chamado>(
+                new CommandDefinition(selectSql, new { chamadoId, tenantId }, cancellationToken: ct));
+
+            return chamado;
         }
 
         public async Task<ChamadoInteracao> AdicionarInteracaoAsync(

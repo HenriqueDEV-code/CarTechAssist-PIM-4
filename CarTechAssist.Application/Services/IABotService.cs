@@ -106,31 +106,47 @@ namespace CarTechAssist.Application.Services
                 // 4. Construir contexto para a IA
                 var contexto = ConstruirContexto(chamado, solicitante, historicoMensagens);
 
-                // 5. Chamar a IA
+                // 5. Verificar se a IA está habilitada
+                if (_aiProvider is OpenRouterService openRouter && !openRouter.EstaHabilitado())
+                {
+                    _logger.LogWarning("⚠️ OpenRouter não está habilitado. Verifique a configuração no appsettings.json");
+                    throw new InvalidOperationException("Serviço de IA não está habilitado. Verifique a configuração do OpenRouter no appsettings.json.");
+                }
+
+                // 6. Chamar a IA
                 _logger.LogInformation("📤 Enviando contexto para IA. Tamanho do contexto: {Tamanho} caracteres", contexto.Length);
                 var respostaIA = await _aiProvider.ResponderAsync(contexto, ct);
                 _logger.LogInformation("📥 Resposta da IA recebida. Tamanho: {Tamanho} caracteres, Modelo: {Modelo}", 
                     respostaIA.Mensagem?.Length ?? 0, respostaIA.Modelo);
 
-                // 6. Analisar resposta da IA e extrair ações
+                // 7. Analisar resposta da IA e extrair ações
                 var acoes = AnalisarRespostaIA(respostaIA.Mensagem ?? string.Empty);
                 _logger.LogInformation("🔍 Ações extraídas da IA: NovoStatus={NovoStatus}, CriarNovoChamado={CriarNovoChamado}", 
                     acoes.NovoStatus, acoes.CriarNovoChamado != null);
 
-                // 7. Adicionar resposta do bot como interação
+                // 8. Adicionar resposta do bot como interação
                 _logger.LogInformation("💬 Adicionando interação do bot ao chamado {ChamadoId}", chamadoId);
-                await AdicionarInteracaoBotAsync(
-                    chamadoId,
-                    tenantId,
-                    botUsuarioId,
-                    respostaIA.Mensagem ?? string.Empty,
-                    respostaIA.Modelo,
-                    respostaIA.Confianca,
-                    respostaIA.ResumoRaciocinio,
-                    ct);
-                _logger.LogInformation("✅ Interação do bot adicionada com sucesso");
+                try
+                {
+                    await AdicionarInteracaoBotAsync(
+                        chamadoId,
+                        tenantId,
+                        botUsuarioId,
+                        respostaIA.Mensagem ?? string.Empty,
+                        respostaIA.Modelo,
+                        respostaIA.Confianca,
+                        respostaIA.ResumoRaciocinio,
+                        ct);
+                    _logger.LogInformation("✅ Interação do bot adicionada com sucesso");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "❌ Erro ao adicionar interação do bot. Message: {Message}", ex.Message);
+                    // Se falhar ao adicionar interação, ainda retornamos sucesso mas sem a mensagem
+                    // Isso evita que o erro impeça o processamento completo
+                }
 
-                // 8. Atualizar status se necessário
+                // 9. Atualizar status se necessário
                 bool statusAtualizado = false;
                 if (acoes.NovoStatus.HasValue && acoes.NovoStatus.Value != (byte)chamado.StatusId)
                 {
@@ -144,11 +160,12 @@ namespace CarTechAssist.Application.Services
                     _logger.LogInformation("✅ Status do chamado {ChamadoId} atualizado para {Status}", chamadoId, acoes.NovoStatus.Value);
                 }
 
-                // 9. Criar novos chamados relacionados se necessário
+                // 10. Criar novos chamados relacionados se necessário
                 if (acoes.CriarNovoChamado != null)
                 {
                     try
                     {
+                        _logger.LogInformation("📝 Criando novo chamado relacionado: {Titulo}", acoes.CriarNovoChamado.Titulo);
                         var novoChamado = await _chamadosService.CriarAsync(
                             tenantId,
                             new Contracts.Tickets.CriarChamadoRequest(
@@ -181,8 +198,14 @@ namespace CarTechAssist.Application.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Erro ao processar chamado {ChamadoId} pelo Bot IA", chamadoId);
-                throw;
+                _logger.LogError(ex, "❌ Erro ao processar chamado {ChamadoId} pelo Bot IA. Tipo: {Tipo}, Message: {Message}, InnerException: {InnerException}, StackTrace: {StackTrace}", 
+                    chamadoId, ex.GetType().Name, ex.Message, ex.InnerException?.Message, ex.StackTrace);
+                
+                // Preservar a exceção original com mais contexto
+                throw new InvalidOperationException(
+                    $"Erro ao processar chamado {chamadoId} com IA: {ex.Message}" + 
+                    (ex.InnerException != null ? $" (Detalhes: {ex.InnerException.Message})" : ""), 
+                    ex);
             }
         }
 

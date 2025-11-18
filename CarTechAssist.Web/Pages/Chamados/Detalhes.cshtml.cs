@@ -169,8 +169,15 @@ namespace CarTechAssist.Web.Pages.Chamados
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Erro ao processar chamado {ChamadoId} com IA. Message: {Message}, StackTrace: {StackTrace}", id, ex.Message, ex.StackTrace);
-                return new JsonResult(new { success = false, message = $"Erro ao processar chamado com IA: {ex.Message}" }) { StatusCode = 500 };
+                var innerException = ex.InnerException != null ? $" InnerException: {ex.InnerException.Message}" : "";
+                _logger.LogError(ex, "❌ Erro ao processar chamado {ChamadoId} com IA. Message: {Message}, StackTrace: {StackTrace}, InnerException: {InnerException}", 
+                    id, ex.Message, ex.StackTrace, ex.InnerException?.Message);
+                return new JsonResult(new { 
+                    success = false, 
+                    message = $"Erro ao processar chamado com IA: {ex.Message}{innerException}",
+                    errorType = ex.GetType().Name,
+                    innerError = ex.InnerException?.Message
+                }) { StatusCode = 500 };
             }
         }
 

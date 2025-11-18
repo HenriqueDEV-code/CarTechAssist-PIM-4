@@ -51,8 +51,15 @@ namespace CarTechAssist.Api.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Erro inesperado ao processar chamado {ChamadoId}: {Message}", chamadoId, ex.Message);
-                return StatusCode(500, new { success = false, message = "Erro ao processar chamado com IA.", error = ex.Message });
+                var innerMessage = ex.InnerException != null ? $" InnerException: {ex.InnerException.Message}" : "";
+                _logger.LogError(ex, "❌ Erro inesperado ao processar chamado {ChamadoId}. Tipo: {Tipo}, Message: {Message}, InnerException: {InnerException}, StackTrace: {StackTrace}", 
+                    chamadoId, ex.GetType().Name, ex.Message, ex.InnerException?.Message, ex.StackTrace);
+                return StatusCode(500, new { 
+                    success = false, 
+                    message = $"Erro ao processar chamado com IA: {ex.Message}{innerMessage}",
+                    errorType = ex.GetType().Name,
+                    innerError = ex.InnerException?.Message
+                });
             }
         }
 

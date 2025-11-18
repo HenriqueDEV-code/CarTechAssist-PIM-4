@@ -45,15 +45,36 @@ namespace CarTechAssist.Application.Services
                     {
                         _httpClient = httpClientFactory.CreateClient();
                         _httpClient.BaseAddress = new Uri("https://openrouter.ai/api/v1/");
+                        
+                        // Verificar se a API Key está presente e válida
+                        if (string.IsNullOrWhiteSpace(_apiKey))
+                        {
+                            _logger.LogError("❌ API Key do OpenRouter está vazia ou nula!");
+                            _enabled = false;
+                            return;
+                        }
+                        
+                        // Verificar se a API Key começa com "sk-or-v1-"
+                        if (!_apiKey.StartsWith("sk-or-v1-"))
+                        {
+                            _logger.LogWarning("⚠️ API Key do OpenRouter não parece estar no formato correto (deve começar com 'sk-or-v1-')");
+                        }
+                        
+                        // Limpar headers padrão e adicionar os corretos
+                        _httpClient.DefaultRequestHeaders.Clear();
                         _httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {_apiKey}");
-
                         _httpClient.DefaultRequestHeaders.Add("HTTP-Referer", _configuration["OpenRouter:HttpReferer"] ?? "https://cartechassist.local");
                         _httpClient.DefaultRequestHeaders.Add("X-Title", "CarTechAssist");
                         _httpClient.Timeout = TimeSpan.FromSeconds(30);
+                        
                         _logger.LogInformation("✅ OpenRouterService configurado com sucesso!");
                         _logger.LogInformation("   Model: {Model}, MaxTokens: {MaxTokens}, Temperature: {Temperature}", 
                             _model, _maxTokens, _temperature);
                         _logger.LogInformation("   API Base: https://openrouter.ai/api/v1/");
+                        _logger.LogInformation("   API Key: {ApiKeyPrefix}...{ApiKeySuffix} (tamanho: {Length} caracteres)", 
+                            _apiKey.Substring(0, Math.Min(15, _apiKey.Length)), 
+                            _apiKey.Length > 15 ? _apiKey.Substring(_apiKey.Length - 4) : "", 
+                            _apiKey.Length);
                     }
                     catch (Exception ex)
                     {
@@ -117,8 +138,25 @@ SEMPRE mantenha o cliente informado sobre o que você está fazendo.";
                     max_tokens = _maxTokens
                 };
 
+                _logger.LogInformation("🔍 Enviando requisição para OpenRouter. URL: {Url}, Model: {Model}", 
+                    _httpClient.BaseAddress + "chat/completions", _model);
+                _logger.LogInformation("🔍 Headers: Authorization={HasAuth}, HTTP-Referer={Referer}, X-Title={Title}", 
+                    _httpClient.DefaultRequestHeaders.Contains("Authorization"),
+                    _httpClient.DefaultRequestHeaders.Contains("HTTP-Referer") ? _httpClient.DefaultRequestHeaders.GetValues("HTTP-Referer").FirstOrDefault() : "não definido",
+                    _httpClient.DefaultRequestHeaders.Contains("X-Title") ? _httpClient.DefaultRequestHeaders.GetValues("X-Title").FirstOrDefault() : "não definido");
+
                 var response = await _httpClient.PostAsJsonAsync("chat/completions", requestBody, ct);
-                response.EnsureSuccessStatusCode();
+                
+                if (!response.IsSuccessStatusCode)
+                {
+                    var errorContent = await response.Content.ReadAsStringAsync(ct);
+                    _logger.LogError("❌ OpenRouter retornou erro. Status: {StatusCode}, Response: {Response}", 
+                        response.StatusCode, errorContent);
+                    throw new HttpRequestException(
+                        $"OpenRouter retornou erro {response.StatusCode}: {response.ReasonPhrase}. Response: {errorContent}",
+                        null,
+                        response.StatusCode);
+                }
 
                 var result = await response.Content.ReadFromJsonAsync<OpenRouterResponse>(ct);
                 
@@ -150,9 +188,16 @@ SEMPRE mantenha o cliente informado sobre o que você está fazendo.";
                     CustoUsd: custoUsd
                 );
             }
+            catch (HttpRequestException httpEx)
+            {
+                _logger.LogError(httpEx, "❌ Erro HTTP ao chamar OpenRouter. StatusCode: {StatusCode}, Message: {Message}", 
+                    httpEx.Data.Contains("StatusCode") ? httpEx.Data["StatusCode"] : "Desconhecido", httpEx.Message);
+                throw;
+            }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Erro ao chamar OpenRouter");
+                _logger.LogError(ex, "❌ Erro inesperado ao chamar OpenRouter. Tipo: {Tipo}, Message: {Message}, InnerException: {InnerException}", 
+                    ex.GetType().Name, ex.Message, ex.InnerException?.Message);
                 throw new Exception($"Erro ao comunicar com OpenRouter: {ex.Message}", ex);
             }
         }
