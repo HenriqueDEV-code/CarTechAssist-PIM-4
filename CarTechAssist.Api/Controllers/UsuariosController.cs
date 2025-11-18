@@ -306,13 +306,42 @@ namespace CarTechAssist.Api.Controllers
 
         [HttpPatch("{id:int}/ativacao")]
         [AuthorizeRoles(3)] // Apenas Admin(3) pode ativar/desativar usuários
-        public async Task<IActionResult> AlterarAtivacao(
+        public async Task<ActionResult<UsuarioDto>> AlterarAtivacao(
             int id,
             [FromBody] AlterarAtivacaoRequest request,
             CancellationToken ct = default)
         {
-            await _usuariosService.AlterarAtivacaoAsync(id, request.Ativo, ct);
-            return Ok();
+            var logger = HttpContext.RequestServices.GetRequiredService<ILogger<UsuariosController>>();
+            
+            try
+            {
+                logger.LogInformation("🔍 ALTERAR ATIVACAO - UsuarioId: {UsuarioId}, Ativo: {Ativo}", id, request.Ativo);
+                
+                var tenantId = GetTenantId();
+                logger.LogInformation("🔍 ALTERAR ATIVACAO - TenantId: {TenantId}", tenantId);
+                
+                var result = await _usuariosService.AlterarAtivacaoAsync(tenantId, id, request.Ativo, ct);
+                
+                logger.LogInformation("✅ ALTERAR ATIVACAO - Sucesso. UsuarioId: {UsuarioId}, Ativo: {Ativo}", 
+                    result.UsuarioId, result.Ativo);
+                
+                return Ok(result);
+            }
+            catch (InvalidOperationException ex)
+            {
+                logger.LogError(ex, "❌ ALTERAR ATIVACAO - Usuário não encontrado. UsuarioId: {UsuarioId}", id);
+                return NotFound(new { message = ex.Message });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                logger.LogError(ex, "❌ ALTERAR ATIVACAO - Erro de autorização. UsuarioId: {UsuarioId}", id);
+                return Unauthorized(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "❌ ALTERAR ATIVACAO - Erro inesperado. UsuarioId: {UsuarioId}", id);
+                return StatusCode(500, new { message = "Erro ao alterar ativação do usuário.", error = ex.Message });
+            }
         }
 
         [HttpPost("{id:int}/reset-senha")]

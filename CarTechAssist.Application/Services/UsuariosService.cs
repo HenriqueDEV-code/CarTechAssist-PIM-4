@@ -137,9 +137,28 @@ namespace CarTechAssist.Application.Services
             );
         }
 
-        public async Task AlterarAtivacaoAsync(int usuarioId, bool ativo, CancellationToken ct)
+        public async Task<UsuarioDto> AlterarAtivacaoAsync(int tenantId, int usuarioId, bool ativo, CancellationToken ct)
         {
             await _usuariosRepository.AlterarAtivacaoAsync(usuarioId, ativo, ct);
+            
+            // Buscar o usuário atualizado para retornar
+            var usuario = await _usuariosRepository.ObterPorIdAsync(usuarioId, ct);
+            if (usuario == null)
+                throw new InvalidOperationException($"Usuário com ID {usuarioId} não encontrado.");
+            
+            if (usuario.TenantId != tenantId)
+                throw new UnauthorizedAccessException("Usuário não pertence ao tenant atual.");
+            
+            return new UsuarioDto(
+                usuario.UsuarioId,
+                usuario.Login,
+                usuario.NomeCompleto,
+                usuario.Email,
+                usuario.Telefone,
+                (byte)usuario.TipoUsuarioId,
+                usuario.Ativo,
+                usuario.DataCriacao
+            );
         }
 
         public async Task ResetSenhaAsync(int usuarioId, string novaSenha, CancellationToken ct)

@@ -85,8 +85,11 @@ namespace CarTechAssist.Web.Pages
             try
             {
                 _logger.LogInformation("🔍 OnGetAsync - Chamando ListarAsync. Tipo: {Tipo}, Page: {Page}, PageSize: {PageSize}", tipo, page, PageSize);
+                // Por padrão, mostrar apenas usuários ativos (Ativo = true)
+                // Se precisar mostrar todos, pode passar ativo: null
                 Usuarios = await _usuariosService.ListarAsync(
                     tipo: tipo,
+                    ativo: true, // Mostrar apenas usuários ativos por padrão
                     page: page,
                     pageSize: PageSize,
                     ct: ct);
@@ -350,27 +353,50 @@ namespace CarTechAssist.Web.Pages
             var token = HttpContext.Session.GetString("Token");
             if (string.IsNullOrEmpty(token))
             {
+                _logger.LogWarning("❌ OnPostToggleAtivoAsync - Token não encontrado");
                 return RedirectToPage("/Login");
             }
 
             var tipoUsuarioIdStr = HttpContext.Session.GetString("TipoUsuarioId");
             if (!byte.TryParse(tipoUsuarioIdStr, out var tipoUsuarioId) || tipoUsuarioId != 3)
             {
+                _logger.LogWarning("❌ OnPostToggleAtivoAsync - Usuário não é admin (TipoUsuarioId: {TipoUsuarioId})", tipoUsuarioIdStr);
                 return RedirectToPage("/Dashboard");
             }
 
+            _logger.LogInformation("🔍 OnPostToggleAtivoAsync - Iniciando. UsuarioId: {UsuarioId}, AtivoAtual: {AtivoAtual}", 
+                usuarioId, ativoAtual);
+
             try
             {
-                var request = new AlterarAtivacaoRequest(!ativoAtual);
+                var novoStatus = !ativoAtual;
+                _logger.LogInformation("🔍 OnPostToggleAtivoAsync - Novo status: {NovoStatus}", novoStatus);
+                
+                var request = new AlterarAtivacaoRequest(novoStatus);
                 var atualizado = await _usuariosService.AtivarDesativarAsync(usuarioId, request, ct);
+                
                 if (atualizado != null)
                 {
+                    _logger.LogInformation("✅ OnPostToggleAtivoAsync - Sucesso. UsuarioId: {UsuarioId}, Nome: {Nome}, Ativo: {Ativo}", 
+                        atualizado.UsuarioId, atualizado.NomeCompleto, atualizado.Ativo);
                     SuccessMessage = $"Usuário '{atualizado.NomeCompleto}' {(atualizado.Ativo ? "ativado" : "desativado")} com sucesso!";
                 }
+                else
+                {
+                    _logger.LogWarning("⚠️ OnPostToggleAtivoAsync - Resposta nula da API. UsuarioId: {UsuarioId}", usuarioId);
+                    ErrorMessage = "Erro ao alterar ativação. Resposta inválida da API.";
+                }
+            }
+            catch (HttpRequestException ex)
+            {
+                _logger.LogError(ex, "❌ OnPostToggleAtivoAsync - Erro HTTP. UsuarioId: {UsuarioId}, Message: {Message}", 
+                    usuarioId, ex.Message);
+                ErrorMessage = $"Erro ao alterar ativação: {ex.Message}";
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Erro ao alterar ativação do usuário {UsuarioId}", usuarioId);
+                _logger.LogError(ex, "❌ OnPostToggleAtivoAsync - Erro inesperado. UsuarioId: {UsuarioId}, Message: {Message}, StackTrace: {StackTrace}", 
+                    usuarioId, ex.Message, ex.StackTrace);
                 ErrorMessage = "Erro ao alterar ativação. Tente novamente.";
             }
 

@@ -224,7 +224,8 @@ namespace CarTechAssist.Infrastruture.Repositories
 
             const string sql = @"
                 UPDATE core.Usuario 
-                SET Ativo = @ativo
+                SET Ativo = @ativo,
+                    DataAtualizacao = GETUTCDATE()
                 WHERE UsuarioId = @usuarioId AND Excluido = 0";
 
             await _db.ExecuteAsync(
