@@ -59,9 +59,24 @@ namespace CarTechAssist.Application.Services
 
                 // Verificar se o chamado foi criado por um cliente
                 var solicitante = await _usuariosRepository.ObterPorIdAsync(chamado.SolicitanteUsuarioId, ct);
-                if (solicitante == null || (byte)solicitante.TipoUsuarioId != (byte)TipoUsuarios.Cliente)
+                if (solicitante == null)
                 {
-                    _logger.LogInformation("Chamado {ChamadoId} não foi criado por um cliente. Pulando processamento IA.", chamadoId);
+                    _logger.LogWarning("⚠️ Solicitante {SolicitanteUsuarioId} não encontrado para o chamado {ChamadoId}. Pulando processamento IA.", chamado.SolicitanteUsuarioId, chamadoId);
+                    return new ProcessarChamadoResult
+                    {
+                        Sucesso = false,
+                        Mensagem = "Solicitante do chamado não encontrado.",
+                        StatusAtualizado = false
+                    };
+                }
+                
+                _logger.LogInformation("🔍 Solicitante encontrado: UsuarioId={UsuarioId}, TipoUsuarioId={TipoUsuarioId}, Nome={Nome}", 
+                    solicitante.UsuarioId, solicitante.TipoUsuarioId, solicitante.NomeCompleto);
+                
+                if ((byte)solicitante.TipoUsuarioId != (byte)TipoUsuarios.Cliente)
+                {
+                    _logger.LogInformation("ℹ️ Chamado {ChamadoId} não foi criado por um cliente (TipoUsuarioId={TipoUsuarioId}). Pulando processamento IA.", 
+                        chamadoId, solicitante.TipoUsuarioId);
                     return new ProcessarChamadoResult
                     {
                         Sucesso = false,
@@ -69,6 +84,8 @@ namespace CarTechAssist.Application.Services
                         StatusAtualizado = false
                     };
                 }
+                
+                _logger.LogInformation("✅ Chamado {ChamadoId} foi criado por um cliente. Prosseguindo com processamento IA.", chamadoId);
 
                 // 2. Buscar ou criar usuário Bot
                 var botUsuarioId = await ObterOuCriarBotUsuarioAsync(tenantId, ct);
@@ -90,21 +107,28 @@ namespace CarTechAssist.Application.Services
                 var contexto = ConstruirContexto(chamado, solicitante, historicoMensagens);
 
                 // 5. Chamar a IA
+                _logger.LogInformation("📤 Enviando contexto para IA. Tamanho do contexto: {Tamanho} caracteres", contexto.Length);
                 var respostaIA = await _aiProvider.ResponderAsync(contexto, ct);
+                _logger.LogInformation("📥 Resposta da IA recebida. Tamanho: {Tamanho} caracteres, Modelo: {Modelo}", 
+                    respostaIA.Mensagem?.Length ?? 0, respostaIA.Modelo);
 
                 // 6. Analisar resposta da IA e extrair ações
-                var acoes = AnalisarRespostaIA(respostaIA.Mensagem);
+                var acoes = AnalisarRespostaIA(respostaIA.Mensagem ?? string.Empty);
+                _logger.LogInformation("🔍 Ações extraídas da IA: NovoStatus={NovoStatus}, CriarNovoChamado={CriarNovoChamado}", 
+                    acoes.NovoStatus, acoes.CriarNovoChamado != null);
 
                 // 7. Adicionar resposta do bot como interação
+                _logger.LogInformation("💬 Adicionando interação do bot ao chamado {ChamadoId}", chamadoId);
                 await AdicionarInteracaoBotAsync(
                     chamadoId,
                     tenantId,
                     botUsuarioId,
-                    respostaIA.Mensagem,
+                    respostaIA.Mensagem ?? string.Empty,
                     respostaIA.Modelo,
                     respostaIA.Confianca,
                     respostaIA.ResumoRaciocinio,
                     ct);
+                _logger.LogInformation("✅ Interação do bot adicionada com sucesso");
 
                 // 8. Atualizar status se necessário
                 bool statusAtualizado = false;
@@ -150,7 +174,7 @@ namespace CarTechAssist.Application.Services
                 return new ProcessarChamadoResult
                 {
                     Sucesso = true,
-                    Mensagem = respostaIA.Mensagem,
+                    Mensagem = respostaIA.Mensagem ?? string.Empty,
                     StatusAtualizado = statusAtualizado,
                     NovoStatus = acoes.NovoStatus
                 };
@@ -348,12 +372,17 @@ namespace CarTechAssist.Application.Services
             var botUsuario = await _usuariosRepository.ObterPorLoginAsync(tenantId, "BOT_IA", ct);
             if (botUsuario != null)
             {
+                _logger.LogInformation("✅ Usuário Bot encontrado. UsuarioId: {UsuarioId}", botUsuario.UsuarioId);
                 return botUsuario.UsuarioId;
             }
 
             // Criar usuário bot se não existir
-            _logger.LogInformation("Criando usuário Bot para tenant {TenantId}", tenantId);
+            _logger.LogInformation("🔧 Criando usuário Bot para tenant {TenantId}", tenantId);
             
+            // Gerar hash e salt para o Bot (usando uma senha aleatória que nunca será usada)
+            // O Bot não faz login, mas precisa ter hash e salt válidos para passar na validação
+            var (hash, salt) = GerarHashSenhaBot();
+
             var novoBot = new Usuario
             {
                 TenantId = tenantId,
@@ -362,8 +391,8 @@ namespace CarTechAssist.Application.Services
                 NomeCompleto = "Bot IA - CarTechAssist",
                 Email = null,
                 Telefone = null,
-                HashSenha = Array.Empty<byte>(), // Bot não precisa de senha
-                SaltSenha = Array.Empty<byte>(),
+                HashSenha = hash,
+                SaltSenha = salt,
                 PrecisaTrocarSenha = false,
                 Ativo = true,
                 DataCriacao = DateTime.UtcNow,
@@ -378,15 +407,27 @@ namespace CarTechAssist.Application.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Erro ao criar usuário Bot. Tentando buscar novamente...");
-                // Tentar buscar novamente
+                _logger.LogError(ex, "❌ Erro ao criar usuário Bot. Message: {Message}, StackTrace: {StackTrace}", ex.Message, ex.StackTrace);
+                // Tentar buscar novamente (pode ter sido criado por outra thread)
                 botUsuario = await _usuariosRepository.ObterPorLoginAsync(tenantId, "BOT_IA", ct);
                 if (botUsuario != null)
                 {
+                    _logger.LogInformation("✅ Usuário Bot encontrado após erro. UsuarioId: {UsuarioId}", botUsuario.UsuarioId);
                     return botUsuario.UsuarioId;
                 }
-                throw new InvalidOperationException("Não foi possível criar ou encontrar o usuário Bot.", ex);
+                throw new InvalidOperationException($"Não foi possível criar ou encontrar o usuário Bot. Erro: {ex.Message}", ex);
             }
+        }
+
+        private static (byte[] hash, byte[] salt) GerarHashSenhaBot()
+        {
+            // Gerar hash e salt para o Bot usando uma senha aleatória
+            // O Bot nunca fará login, então a senha não importa
+            using var hmac = new System.Security.Cryptography.HMACSHA512();
+            var salt = hmac.Key;
+            // Usar uma string fixa como senha (nunca será usada para login)
+            var hash = hmac.ComputeHash(System.Text.Encoding.UTF8.GetBytes("BOT_IA_SYSTEM_PASSWORD_NEVER_USED"));
+            return (hash, salt);
         }
 
         private async Task AdicionarInteracaoBotAsync(

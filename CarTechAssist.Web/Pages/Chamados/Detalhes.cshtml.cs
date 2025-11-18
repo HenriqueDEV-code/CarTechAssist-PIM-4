@@ -155,18 +155,22 @@ namespace CarTechAssist.Web.Pages.Chamados
             var token = HttpContext.Session.GetString("Token");
             if (string.IsNullOrEmpty(token))
             {
+                _logger.LogWarning("❌ ProcessarChamadoComIA - Token não encontrado. ChamadoId: {ChamadoId}", id);
                 return new JsonResult(new { success = false, message = "Sessão expirada." }) { StatusCode = 401 };
             }
+
+            _logger.LogInformation("🤖 ProcessarChamadoComIA - Iniciando. ChamadoId: {ChamadoId}", id);
 
             try
             {
                 var resultado = await _chamadosService.ProcessarChamadoComIAAsync(id, ct);
+                _logger.LogInformation("✅ ProcessarChamadoComIA - Sucesso. ChamadoId: {ChamadoId}, Sucesso: {Sucesso}", id, resultado?.GetType().GetProperty("success")?.GetValue(resultado));
                 return new JsonResult(resultado);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Erro ao processar chamado {ChamadoId} com IA", id);
-                return new JsonResult(new { success = false, message = "Erro ao processar chamado com IA." }) { StatusCode = 500 };
+                _logger.LogError(ex, "❌ Erro ao processar chamado {ChamadoId} com IA. Message: {Message}, StackTrace: {StackTrace}", id, ex.Message, ex.StackTrace);
+                return new JsonResult(new { success = false, message = $"Erro ao processar chamado com IA: {ex.Message}" }) { StatusCode = 500 };
             }
         }
 
