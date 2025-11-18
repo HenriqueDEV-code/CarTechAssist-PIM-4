@@ -85,11 +85,10 @@ namespace CarTechAssist.Web.Pages
             try
             {
                 _logger.LogInformation("🔍 OnGetAsync - Chamando ListarAsync. Tipo: {Tipo}, Page: {Page}, PageSize: {PageSize}", tipo, page, PageSize);
-                // Por padrão, mostrar apenas usuários ativos (Ativo = true)
-                // Se precisar mostrar todos, pode passar ativo: null
+                // Mostrar todos os usuários (ativos e inativos) - não filtrar por ativo
                 Usuarios = await _usuariosService.ListarAsync(
                     tipo: tipo,
-                    ativo: true, // Mostrar apenas usuários ativos por padrão
+                    ativo: null, // null = mostrar todos (ativos e inativos)
                     page: page,
                     pageSize: PageSize,
                     ct: ct);
@@ -387,17 +386,37 @@ namespace CarTechAssist.Web.Pages
                     ErrorMessage = "Erro ao alterar ativação. Resposta inválida da API.";
                 }
             }
-            catch (HttpRequestException ex)
+            catch (System.Net.Http.HttpRequestException httpEx)
             {
-                _logger.LogError(ex, "❌ OnPostToggleAtivoAsync - Erro HTTP. UsuarioId: {UsuarioId}, Message: {Message}", 
-                    usuarioId, ex.Message);
-                ErrorMessage = $"Erro ao alterar ativação: {ex.Message}";
+                _logger.LogError(httpEx, "❌ OnPostToggleAtivoAsync - Erro HTTP. UsuarioId: {UsuarioId}, Message: {Message}, StatusCode: {StatusCode}", 
+                    usuarioId, httpEx.Message, httpEx.Data["StatusCode"]);
+                
+                // Tentar extrair mensagem mais detalhada
+                var errorMessage = httpEx.Message;
+                if (httpEx.Data.Contains("ResponseContent"))
+                {
+                    var responseContent = httpEx.Data["ResponseContent"]?.ToString();
+                    if (!string.IsNullOrEmpty(responseContent))
+                    {
+                        try
+                        {
+                            var errorObj = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(responseContent);
+                            if (errorObj.TryGetProperty("message", out var messageProp))
+                            {
+                                errorMessage = messageProp.GetString() ?? errorMessage;
+                            }
+                        }
+                        catch { }
+                    }
+                }
+                
+                ErrorMessage = $"Erro ao alterar ativação: {errorMessage}";
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "❌ OnPostToggleAtivoAsync - Erro inesperado. UsuarioId: {UsuarioId}, Message: {Message}, StackTrace: {StackTrace}", 
                     usuarioId, ex.Message, ex.StackTrace);
-                ErrorMessage = "Erro ao alterar ativação. Tente novamente.";
+                ErrorMessage = $"Erro ao alterar ativação: {ex.Message}";
             }
 
             return await OnGetAsync(ct: ct);

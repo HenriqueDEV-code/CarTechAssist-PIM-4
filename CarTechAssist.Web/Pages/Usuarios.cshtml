@@ -185,7 +185,10 @@
                                             <form method="post" asp-page-handler="ToggleAtivo" class="d-inline">
                                                 <input type="hidden" name="usuarioId" value="@usuario.UsuarioId" />
                                                 <input type="hidden" name="ativoAtual" value="@usuario.Ativo" />
-                                                <button type="submit" class="btn btn-sm @(usuario.Ativo ? "btn-outline-warning" : "btn-outline-success")">
+                                                <button type="submit" 
+                                                        class="btn btn-sm @(usuario.Ativo ? "btn-outline-warning" : "btn-outline-success")"
+                                                        title="@(usuario.Ativo ? "Desativar usuário" : "Ativar usuário")"
+                                                        onclick="return confirm('Tem certeza que deseja @(usuario.Ativo ? "desativar" : "ativar") o usuário @usuario.NomeCompleto?');">
                                                     <i class="bi @(usuario.Ativo ? "bi-person-dash" : "bi-person-check")"></i>
                                                 </button>
                                             </form>

@@ -139,13 +139,33 @@ namespace CarTechAssist.Application.Services
 
         public async Task<UsuarioDto> AlterarAtivacaoAsync(int tenantId, int usuarioId, bool ativo, CancellationToken ct)
         {
+            // Primeiro, verificar se o usuário existe e pertence ao tenant
+            var usuarioAntes = await _usuariosRepository.ObterPorIdAsync(usuarioId, ct);
+            if (usuarioAntes == null)
+                throw new InvalidOperationException($"Usuário com ID {usuarioId} não encontrado.");
+            
+            if (usuarioAntes.TenantId != tenantId)
+                throw new UnauthorizedAccessException("Usuário não pertence ao tenant atual.");
+            
+            System.Diagnostics.Debug.WriteLine($"[AlterarAtivacaoAsync] Antes: UsuarioId={usuarioId}, AtivoAtual={usuarioAntes.Ativo}, NovoAtivo={ativo}");
+            
+            // Agora atualizar
             await _usuariosRepository.AlterarAtivacaoAsync(usuarioId, ativo, ct);
             
             // Buscar o usuário atualizado para retornar
             var usuario = await _usuariosRepository.ObterPorIdAsync(usuarioId, ct);
             if (usuario == null)
-                throw new InvalidOperationException($"Usuário com ID {usuarioId} não encontrado.");
+                throw new InvalidOperationException($"Usuário com ID {usuarioId} não encontrado após atualização.");
             
+            System.Diagnostics.Debug.WriteLine($"[AlterarAtivacaoAsync] Depois: UsuarioId={usuarioId}, Ativo={usuario.Ativo}");
+            
+            // Verificar se a atualização realmente funcionou
+            if (usuario.Ativo != ativo)
+            {
+                throw new InvalidOperationException($"Falha ao atualizar status. Esperado: {ativo}, Obtido: {usuario.Ativo}");
+            }
+            
+            // Verificar novamente o tenant (por segurança)
             if (usuario.TenantId != tenantId)
                 throw new UnauthorizedAccessException("Usuário não pertence ao tenant atual.");
             

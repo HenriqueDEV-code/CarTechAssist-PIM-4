@@ -315,6 +315,18 @@ namespace CarTechAssist.Api.Controllers
             
             try
             {
+                logger.LogInformation("🔍 ALTERAR ATIVACAO - Iniciando. UsuarioId: {UsuarioId}", id);
+                logger.LogInformation("🔍 ALTERAR ATIVACAO - Request recebido: Ativo={Ativo}", request?.Ativo);
+                logger.LogInformation("🔍 ALTERAR ATIVACAO - Headers: X-Tenant-Id={TenantId}, Authorization={HasAuth}",
+                    Request.Headers["X-Tenant-Id"].FirstOrDefault(),
+                    Request.Headers.ContainsKey("Authorization"));
+                
+                if (request == null)
+                {
+                    logger.LogError("❌ ALTERAR ATIVACAO - Request é NULL!");
+                    return BadRequest(new { message = "Dados inválidos. Request não pode ser nulo." });
+                }
+                
                 logger.LogInformation("🔍 ALTERAR ATIVACAO - UsuarioId: {UsuarioId}, Ativo: {Ativo}", id, request.Ativo);
                 
                 var tenantId = GetTenantId();
@@ -322,24 +334,27 @@ namespace CarTechAssist.Api.Controllers
                 
                 var result = await _usuariosService.AlterarAtivacaoAsync(tenantId, id, request.Ativo, ct);
                 
-                logger.LogInformation("✅ ALTERAR ATIVACAO - Sucesso. UsuarioId: {UsuarioId}, Ativo: {Ativo}", 
-                    result.UsuarioId, result.Ativo);
+                logger.LogInformation("✅ ALTERAR ATIVACAO - Sucesso. UsuarioId: {UsuarioId}, Nome: {Nome}, Ativo: {Ativo}", 
+                    result.UsuarioId, result.NomeCompleto, result.Ativo);
                 
                 return Ok(result);
             }
             catch (InvalidOperationException ex)
             {
-                logger.LogError(ex, "❌ ALTERAR ATIVACAO - Usuário não encontrado. UsuarioId: {UsuarioId}", id);
+                logger.LogError(ex, "❌ ALTERAR ATIVACAO - Usuário não encontrado ou erro de operação. UsuarioId: {UsuarioId}, Message: {Message}", 
+                    id, ex.Message);
                 return NotFound(new { message = ex.Message });
             }
             catch (UnauthorizedAccessException ex)
             {
-                logger.LogError(ex, "❌ ALTERAR ATIVACAO - Erro de autorização. UsuarioId: {UsuarioId}", id);
+                logger.LogError(ex, "❌ ALTERAR ATIVACAO - Erro de autorização. UsuarioId: {UsuarioId}, Message: {Message}", 
+                    id, ex.Message);
                 return Unauthorized(new { message = ex.Message });
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "❌ ALTERAR ATIVACAO - Erro inesperado. UsuarioId: {UsuarioId}", id);
+                logger.LogError(ex, "❌ ALTERAR ATIVACAO - Erro inesperado. UsuarioId: {UsuarioId}, Message: {Message}, StackTrace: {StackTrace}", 
+                    id, ex.Message, ex.StackTrace);
                 return StatusCode(500, new { message = "Erro ao alterar ativação do usuário.", error = ex.Message });
             }
         }
