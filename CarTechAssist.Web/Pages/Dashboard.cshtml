@@ -167,6 +167,22 @@
                         <i class="bi bi-list"></i> Ver Todos os Chamados
                     </a>
                 </div>
+                @if (Model.IsCliente)
+                {
+                    <hr class="my-3" style="border-color: var(--border-color);">
+                    <div class="alert alert-info mb-0" style="background: var(--bg-secondary); border-color: var(--accent-green);">
+                        <div class="d-flex align-items-start">
+                            <i class="bi bi-robot me-2" style="font-size: 1.5rem; color: var(--accent-green);"></i>
+                            <div>
+                                <strong style="color: var(--accent-green);">Como Acessar o ChatBot IA</strong>
+                                <p class="mb-0 mt-2" style="font-size: 0.9rem;">
+                                    Ao criar um chamado ou enviar uma mensagem, nossa IA irá analisar automaticamente e tentar resolver seu problema. 
+                                    Acesse qualquer chamado para iniciar a conversa com o assistente virtual!
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                }
             </div>
         </div>
     </div>

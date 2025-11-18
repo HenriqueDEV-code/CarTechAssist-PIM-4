@@ -104,6 +104,16 @@ namespace CarTechAssist.Web.Services
         {
             return await _apiClient.PostAsync<ChamadoDetailDto>($"api/chamados/{id}/feedback", request, ct);
         }
+
+        public async Task<object?> ProcessarChamadoComIAAsync(long id, CancellationToken ct = default)
+        {
+            return await _apiClient.PostAsync<object>($"api/iabot/processar-chamado/{id}", null, ct);
+        }
+
+        public async Task<object?> ProcessarMensagemComIAAsync(long id, string mensagem, CancellationToken ct = default)
+        {
+            return await _apiClient.PostAsync<object>($"api/iabot/processar-mensagem/{id}", new { Mensagem = mensagem }, ct);
+        }
     }
 }
 

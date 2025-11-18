@@ -148,6 +148,57 @@ namespace CarTechAssist.Web.Pages.Chamados
         }
 
         /// <summary>
+        /// Handler POST - Processa o chamado com IA Bot.
+        /// </summary>
+        public async Task<IActionResult> OnPostProcessarChamadoComIAAsync(long id, CancellationToken ct = default)
+        {
+            var token = HttpContext.Session.GetString("Token");
+            if (string.IsNullOrEmpty(token))
+            {
+                return new JsonResult(new { success = false, message = "Sessão expirada." }) { StatusCode = 401 };
+            }
+
+            try
+            {
+                var resultado = await _chamadosService.ProcessarChamadoComIAAsync(id, ct);
+                return new JsonResult(resultado);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Erro ao processar chamado {ChamadoId} com IA", id);
+                return new JsonResult(new { success = false, message = "Erro ao processar chamado com IA." }) { StatusCode = 500 };
+            }
+        }
+
+        /// <summary>
+        /// Handler POST - Processa uma mensagem do cliente com IA Bot.
+        /// </summary>
+        public async Task<IActionResult> OnPostProcessarMensagemComIAAsync(long id, [FromForm] string mensagem, CancellationToken ct = default)
+        {
+            var token = HttpContext.Session.GetString("Token");
+            if (string.IsNullOrEmpty(token))
+            {
+                return new JsonResult(new { success = false, message = "Sessão expirada." }) { StatusCode = 401 };
+            }
+
+            if (string.IsNullOrWhiteSpace(mensagem))
+            {
+                return new JsonResult(new { success = false, message = "Mensagem não pode estar vazia." }) { StatusCode = 400 };
+            }
+
+            try
+            {
+                var resultado = await _chamadosService.ProcessarMensagemComIAAsync(id, mensagem, ct);
+                return new JsonResult(resultado);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Erro ao processar mensagem no chamado {ChamadoId} com IA", id);
+                return new JsonResult(new { success = false, message = "Erro ao processar mensagem com IA." }) { StatusCode = 500 };
+            }
+        }
+
+        /// <summary>
         /// Handler GET - Busca novas interações do chamado (para atualização automática).
         /// Retorna apenas interações com ID maior que o último ID conhecido.
         /// </summary>

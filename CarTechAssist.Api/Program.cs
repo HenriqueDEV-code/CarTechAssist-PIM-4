@@ -64,6 +64,10 @@ namespace CarTechAssist.Api
             builder.Services.AddScoped<DialogflowService>();
             builder.Services.AddScoped<OpenRouterService>();
             builder.Services.AddScoped<CategoriasService>();
+            builder.Services.AddScoped<IABotService>();
+            
+            // Registrar OpenRouterService como IAiProvider
+            builder.Services.AddScoped<Domain.Interfaces.IAiProvider>(sp => sp.GetRequiredService<OpenRouterService>());
             
            
             builder.Services.AddSingleton<CarTechAssist.Application.Services.InputSanitizer>();
