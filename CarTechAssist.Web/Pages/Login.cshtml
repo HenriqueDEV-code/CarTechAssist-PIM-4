@@ -40,8 +40,6 @@
         /* Seção Visual - Esquerda */
         .visual-section {
             flex: 1;
-            /* imagem de fundo solicitada (usa Url.Content para resolver ~/) */
-            background: url('@Url.Content("~/img/imgPerfil.png")') center center / cover no-repeat fixed;
             position: relative;
             overflow: hidden;
             display: flex;
@@ -49,6 +47,35 @@
             justify-content: center;
         }
 
+        /* Container do carrossel */
+        .carousel-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+        }
+
+        /* Slides do carrossel */
+        .carousel-slide {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            opacity: 0;
+            transition: opacity 1.5s ease-in-out;
+        }
+
+        .carousel-slide.active {
+            opacity: 1;
+        }
+
+        /* Overlay escuro + halos verdes sutis */
         .visual-section::before {
             content: '';
             position: absolute;
@@ -56,7 +83,6 @@
             left: 0;
             right: 0;
             bottom: 0;
-            /* overlay escuro + halos verdes sutis */
             background: 
                 linear-gradient(rgba(0,0,0,0.55), rgba(0,0,0,0.55)),
                 radial-gradient(circle at 30% 50%, rgba(76, 175, 80, 0.12) 0%, transparent 55%),
@@ -286,6 +312,11 @@
     <div class="login-container">
         <!-- Seção Visual - Esquerda -->
         <div class="visual-section">
+            <!-- Carrossel de Imagens -->
+            <div class="carousel-container" id="carouselContainer">
+                <!-- As imagens serão adicionadas dinamicamente via JavaScript -->
+            </div>
+            
             <div class="visual-content">
                 <div class="brand-wrap">
                     <h1>CAR TECH ASSIST</h1>
@@ -348,6 +379,66 @@
     <script src="~/lib/jquery/dist/jquery.min.js"></script>
     <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
     <script src="~/lib/jquery-validation/dist/jquery.validate.min.js"></script>
-    <script src="~/lib/jquery-validation-unobtrusive/jquery.validate.unobtrusive.min.js"></script>
+    <script src="~/lib/jquery-validation-unobtrusive/jquery.validate-unobtrusive.min.js"></script>
+    
+    <script>
+        // Carrossel de Imagens
+        (function() {
+            const carouselContainer = document.getElementById('carouselContainer');
+            const imageBasePath = '@Url.Content("~/img/ImgCarrosel/")';
+            
+            // Lista de imagens do carrossel (pode adicionar mais aqui)
+            const images = [
+                'Car1.jpg',
+                'Car2.jpg',
+                'Car3.jpg',
+                'Car4.jpg',
+                'Car5.jpg',
+                'Car6.jpg',
+                'Car7.jpg'
+            ];
+            
+            let currentIndex = 0;
+            
+            // Criar slides dinamicamente
+            images.forEach((image, index) => {
+                const slide = document.createElement('div');
+                slide.className = 'carousel-slide' + (index === 0 ? ' active' : '');
+                slide.style.backgroundImage = `url('${imageBasePath}${image}')`;
+                carouselContainer.appendChild(slide);
+            });
+            
+            // Função para alternar para o próximo slide
+            function nextSlide() {
+                const slides = document.querySelectorAll('.carousel-slide');
+                if (slides.length === 0) return;
+                
+                // Remover classe active do slide atual
+                slides[currentIndex].classList.remove('active');
+                
+                // Avançar para o próximo slide (circular)
+                currentIndex = (currentIndex + 1) % slides.length;
+                
+                // Adicionar classe active ao novo slide
+                slides[currentIndex].classList.add('active');
+            }
+            
+            // Iniciar carrossel automático (muda a cada 5 segundos)
+            const intervalTime = 5000; // 5 segundos
+            let carouselInterval = setInterval(nextSlide, intervalTime);
+            
+            // Pausar carrossel quando o mouse está sobre a seção visual
+            const visualSection = document.querySelector('.visual-section');
+            if (visualSection) {
+                visualSection.addEventListener('mouseenter', () => {
+                    clearInterval(carouselInterval);
+                });
+                
+                visualSection.addEventListener('mouseleave', () => {
+                    carouselInterval = setInterval(nextSlide, intervalTime);
+                });
+            }
+        })();
+    </script>
 </body>
 </html>
