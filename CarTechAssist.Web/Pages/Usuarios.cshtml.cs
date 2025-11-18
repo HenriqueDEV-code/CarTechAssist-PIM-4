@@ -347,7 +347,7 @@ namespace CarTechAssist.Web.Pages
             return await OnGetAsync(ct: ct);
         }
 
-        public async Task<IActionResult> OnPostToggleAtivoAsync(int usuarioId, bool ativoAtual, CancellationToken ct = default)
+        public async Task<IActionResult> OnPostToggleAtivoAsync(int usuarioId, CancellationToken ct = default)
         {
             var token = HttpContext.Session.GetString("Token");
             if (string.IsNullOrEmpty(token))
@@ -363,12 +363,23 @@ namespace CarTechAssist.Web.Pages
                 return RedirectToPage("/Dashboard");
             }
 
-            _logger.LogInformation("🔍 OnPostToggleAtivoAsync - Iniciando. UsuarioId: {UsuarioId}, AtivoAtual: {AtivoAtual}", 
-                usuarioId, ativoAtual);
+            // SEMPRE buscar o status atual do banco para garantir que estamos trabalhando com o valor correto
+            // Não confiar no valor do formulário que pode estar desatualizado
+            _logger.LogInformation("🔍 OnPostToggleAtivoAsync - Buscando status atual do usuário no banco. UsuarioId: {UsuarioId}", usuarioId);
+            var usuarioAtual = await _usuariosService.ObterAsync(usuarioId, ct);
+            if (usuarioAtual == null)
+            {
+                _logger.LogError("❌ OnPostToggleAtivoAsync - Usuário não encontrado. UsuarioId: {UsuarioId}", usuarioId);
+                ErrorMessage = "Usuário não encontrado.";
+                return await OnGetAsync(ct: ct);
+            }
+
+            var ativoAtualBool = usuarioAtual.Ativo;
+            _logger.LogInformation("🔍 OnPostToggleAtivoAsync - Status atual do banco: {AtivoAtual}", ativoAtualBool);
 
             try
             {
-                var novoStatus = !ativoAtual;
+                var novoStatus = !ativoAtualBool;
                 _logger.LogInformation("🔍 OnPostToggleAtivoAsync - Novo status: {NovoStatus}", novoStatus);
                 
                 var request = new AlterarAtivacaoRequest(novoStatus);
