@@ -147,17 +147,13 @@ namespace CarTechAssist.Application.Services
             if (usuarioAntes.TenantId != tenantId)
                 throw new UnauthorizedAccessException("Usuário não pertence ao tenant atual.");
             
-            System.Diagnostics.Debug.WriteLine($"[AlterarAtivacaoAsync] Antes: UsuarioId={usuarioId}, AtivoAtual={usuarioAntes.Ativo}, NovoAtivo={ativo}");
-            
-            // Agora atualizar
+            // Atualizar
             await _usuariosRepository.AlterarAtivacaoAsync(usuarioId, ativo, ct);
             
             // Buscar o usuário atualizado para retornar
             var usuario = await _usuariosRepository.ObterPorIdAsync(usuarioId, ct);
             if (usuario == null)
                 throw new InvalidOperationException($"Usuário com ID {usuarioId} não encontrado após atualização.");
-            
-            System.Diagnostics.Debug.WriteLine($"[AlterarAtivacaoAsync] Depois: UsuarioId={usuarioId}, Ativo={usuario.Ativo}");
             
             // Verificar se a atualização realmente funcionou
             if (usuario.Ativo != ativo)

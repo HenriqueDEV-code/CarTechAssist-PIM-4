@@ -222,9 +222,6 @@ namespace CarTechAssist.Infrastruture.Repositories
                 _db.Open();
             }
 
-            // Log para debug
-            System.Diagnostics.Debug.WriteLine($"[AlterarAtivacaoAsync] UsuarioId: {usuarioId}, Ativo: {ativo} (tipo: {ativo.GetType().Name})");
-
             // Converter bool para int (0 ou 1) para garantir compatibilidade com SQL Server BIT
             var ativoInt = ativo ? 1 : 0;
             
@@ -236,13 +233,10 @@ namespace CarTechAssist.Infrastruture.Repositories
 
             var parameters = new DynamicParameters();
             parameters.Add("usuarioId", usuarioId, DbType.Int32);
-            // Usar int (0 ou 1) em vez de bool para garantir compatibilidade
             parameters.Add("ativoInt", ativoInt, DbType.Int32);
 
             var rowsAffected = await _db.ExecuteAsync(
                 new CommandDefinition(sql, parameters, cancellationToken: ct));
-            
-            System.Diagnostics.Debug.WriteLine($"[AlterarAtivacaoAsync] Rows affected: {rowsAffected}");
             
             if (rowsAffected == 0)
             {
