@@ -30,7 +30,18 @@ namespace CarTechAssist.Application.Services
             _enabled = bool.Parse(_configuration["OpenRouter:Enabled"] ?? "false");
             _model = _configuration["OpenRouter:Model"] ?? "openai/gpt-4o-mini";
             _maxTokens = int.Parse(_configuration["OpenRouter:MaxTokens"] ?? "1000");
-            _temperature = double.Parse(_configuration["OpenRouter:Temperature"] ?? "0.7");
+            
+            // Parse temperature usando InvariantCulture para garantir que 0.7 não vire 7
+            var temperatureStr = _configuration["OpenRouter:Temperature"] ?? "0.7";
+            _temperature = double.Parse(temperatureStr, System.Globalization.CultureInfo.InvariantCulture);
+            
+            // Validar que temperature está entre 0 e 2 (limite do OpenRouter)
+            if (_temperature < 0 || _temperature > 2)
+            {
+                _logger.LogWarning("⚠️ Temperature {Temperature} está fora do range válido (0-2). Ajustando para 0.7", _temperature);
+                _temperature = 0.7;
+            }
+            
             _apiKey = _configuration["OpenRouter:ApiKey"]?.Trim(); // Remover espaços em branco
 
             _logger.LogInformation("🔍 Configuração OpenRouter carregada:");
@@ -126,6 +137,15 @@ CRIAÇÃO DE NOVOS CHAMADOS:
 
 SEMPRE mantenha o cliente informado sobre o que você está fazendo.";
 
+                // Garantir que temperature está no range válido (0-2) antes de enviar
+                var temperatureToSend = Math.Max(0, Math.Min(2, _temperature));
+                
+                if (temperatureToSend != _temperature)
+                {
+                    _logger.LogWarning("⚠️ Temperature ajustado de {Original} para {Ajustado} (range válido: 0-2)", 
+                        _temperature, temperatureToSend);
+                }
+                
                 var requestBody = new
                 {
                     model = _model,
@@ -134,9 +154,14 @@ SEMPRE mantenha o cliente informado sobre o que você está fazendo.";
                         new { role = "system", content = systemPrompt },
                         new { role = "user", content = prompt }
                     },
-                    temperature = _temperature,
+                    temperature = temperatureToSend,
                     max_tokens = _maxTokens
                 };
+                
+                _logger.LogInformation("📋 Request body preparado:");
+                _logger.LogInformation("   Model: {Model}", _model);
+                _logger.LogInformation("   Temperature: {Temperature} (validado: 0-2)", temperatureToSend);
+                _logger.LogInformation("   MaxTokens: {MaxTokens}", _maxTokens);
 
                 var requestUrl = client.BaseAddress + "chat/completions";
                 _logger.LogInformation("🔍 Enviando requisição para OpenRouter:");
