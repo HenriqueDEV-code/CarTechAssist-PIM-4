@@ -572,7 +572,7 @@ namespace CarTechAssist.Web.Pages.Chamados
             {
                 (1, "Aberto"),
                 (2, "Em Andamento"),
-                (3, "Pendente"),
+                (3, "Aguardando Usuário"),
                 (4, "Resolvido"),
                 (5, "Fechado"),
                 (6, "Cancelado")

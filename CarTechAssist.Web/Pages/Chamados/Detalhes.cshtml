@@ -579,12 +579,15 @@
             console.log('Verificando se deve acionar bot:', {
                 chamadoId: chamadoId,
                 isCliente: isCliente,
+                tipoUsuarioId: tipoUsuarioId,
                 temRespostaBot: temRespostaBot()
             });
             
-            // Sempre tentar acionar o bot se não houver resposta ainda
-            // O backend vai decidir se deve processar baseado no solicitante do chamado
-            if (chamadoId > 0 && !temRespostaBot()) {
+            // Só acionar o bot se:
+            // 1. O usuário logado é Cliente (tipoUsuarioId === 1)
+            // 2. O chamado existe
+            // 3. Ainda não há resposta do bot
+            if (chamadoId > 0 && isCliente && !temRespostaBot()) {
                 console.log('✅ Acionando bot após 3 segundos...');
                 setTimeout(() => {
                     processarChamadoComIA();
@@ -592,6 +595,8 @@
             } else {
                 console.log('⚠️ Bot não será acionado:', {
                     chamadoIdValido: chamadoId > 0,
+                    isCliente: isCliente,
+                    tipoUsuarioId: tipoUsuarioId,
                     jaTemResposta: temRespostaBot()
                 });
             }

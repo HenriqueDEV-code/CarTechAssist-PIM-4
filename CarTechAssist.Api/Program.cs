@@ -51,6 +51,7 @@ namespace CarTechAssist.Api
             builder.Services.AddScoped<IAnexosReposity, AnexosRepository>();
             builder.Services.AddScoped<IFeedbackRepository, FeedbackRepository>();
             builder.Services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
+            builder.Services.AddScoped<IIARunLogRepository, IARunLogRepository>();
 
             // HttpClient para OpenRouter
             builder.Services.AddHttpClient();

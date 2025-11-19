@@ -26,8 +26,19 @@ namespace CarTechAssist.Api.Controllers
         {
             try
             {
+                // Verificar se o usuário logado é Cliente (IA só processa quando cliente está logado)
+                var tipoUsuarioId = GetTipoUsuarioId();
+                if (tipoUsuarioId != 1) // 1 = Cliente
+                {
+                    _logger.LogInformation("⏸️ Usuário logado não é Cliente (TipoUsuarioId={TipoUsuarioId}). IA não processa quando Admin ou Agente está logado.", tipoUsuarioId);
+                    return BadRequest(new { 
+                        success = false, 
+                        message = "A IA só processa chamados quando um cliente está logado. Agentes e administradores devem atender manualmente." 
+                    });
+                }
+
                 var tenantId = GetTenantId();
-                _logger.LogInformation("🤖 Processando chamado {ChamadoId} pelo Bot IA. TenantId: {TenantId}", chamadoId, tenantId);
+                _logger.LogInformation("🤖 Processando chamado {ChamadoId} pelo Bot IA. TenantId: {TenantId}, TipoUsuarioId: {TipoUsuarioId}", chamadoId, tenantId, tipoUsuarioId);
 
                 var resultado = await _iaBotService.ProcessarChamadoAsync(chamadoId, tenantId, ct);
 
@@ -79,8 +90,19 @@ namespace CarTechAssist.Api.Controllers
                     return BadRequest(new { success = false, message = "Mensagem é obrigatória." });
                 }
 
+                // Verificar se o usuário logado é Cliente (IA só processa quando cliente está logado)
+                var tipoUsuarioId = GetTipoUsuarioId();
+                if (tipoUsuarioId != 1) // 1 = Cliente
+                {
+                    _logger.LogInformation("⏸️ Usuário logado não é Cliente (TipoUsuarioId={TipoUsuarioId}). IA não processa quando Admin ou Agente está logado.", tipoUsuarioId);
+                    return BadRequest(new { 
+                        success = false, 
+                        message = "A IA só processa mensagens quando um cliente está logado. Agentes e administradores devem atender manualmente." 
+                    });
+                }
+
                 var tenantId = GetTenantId();
-                _logger.LogInformation("🤖 Processando mensagem do cliente no chamado {ChamadoId}. TenantId: {TenantId}", chamadoId, tenantId);
+                _logger.LogInformation("🤖 Processando mensagem do cliente no chamado {ChamadoId}. TenantId: {TenantId}, TipoUsuarioId: {TipoUsuarioId}", chamadoId, tenantId, tipoUsuarioId);
 
                 var resultado = await _iaBotService.ProcessarMensagemClienteAsync(
                     chamadoId,
@@ -129,6 +151,26 @@ namespace CarTechAssist.Api.Controllers
             }
 
             return 1; // Default
+        }
+
+        private byte GetTipoUsuarioId()
+        {
+            // Tentar obter do claim Role (onde o TipoUsuarioId é armazenado no JWT)
+            var tipoUsuarioIdClaim = User?.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value;
+            if (!string.IsNullOrEmpty(tipoUsuarioIdClaim) && byte.TryParse(tipoUsuarioIdClaim, out var tipoUsuarioId))
+            {
+                return tipoUsuarioId;
+            }
+
+            // Tentar obter do header (fallback)
+            var tipoUsuarioIdHeader = Request.Headers["X-Tipo-Usuario-Id"].FirstOrDefault();
+            if (!string.IsNullOrEmpty(tipoUsuarioIdHeader) && byte.TryParse(tipoUsuarioIdHeader, out tipoUsuarioId))
+            {
+                return tipoUsuarioId;
+            }
+
+            // Default: assumir Cliente se não encontrar
+            return 1;
         }
     }
 

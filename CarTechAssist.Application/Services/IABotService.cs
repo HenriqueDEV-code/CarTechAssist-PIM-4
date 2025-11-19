@@ -18,19 +18,22 @@ namespace CarTechAssist.Application.Services
         private readonly IUsuariosRepository _usuariosRepository;
         private readonly ILogger<IABotService> _logger;
         private readonly ChamadosService _chamadosService;
+        private readonly IIARunLogRepository? _iaRunLogRepository;
 
         public IABotService(
             IAiProvider aiProvider,
             IChamadosRepository chamadosRepository,
             IUsuariosRepository usuariosRepository,
             ILogger<IABotService> logger,
-            ChamadosService chamadosService)
+            ChamadosService chamadosService,
+            IIARunLogRepository? iaRunLogRepository = null)
         {
             _aiProvider = aiProvider;
             _chamadosRepository = chamadosRepository;
             _usuariosRepository = usuariosRepository;
             _logger = logger;
             _chamadosService = chamadosService;
+            _iaRunLogRepository = iaRunLogRepository;
         }
 
         /// <summary>
@@ -87,6 +90,19 @@ namespace CarTechAssist.Application.Services
                 
                 _logger.LogInformation("✅ Chamado {ChamadoId} foi criado por um cliente. Prosseguindo com processamento IA.", chamadoId);
 
+                // 1.5. Verificar se o chamado pode ser processado pela IA
+                if (!PodeProcessarChamado(chamado.StatusId))
+                {
+                    var statusNome = EnumHelperService.GetStatusNome(chamado.StatusId);
+                    _logger.LogInformation("⏸️ Chamado {ChamadoId} com status {Status} não pode ser processado pela IA. Apenas agente humano pode atender.", chamadoId, statusNome);
+                    return new ProcessarChamadoResult
+                    {
+                        Sucesso = false,
+                        Mensagem = $"Este chamado está com status '{statusNome}' e não pode ser processado pela IA. Entre em contato com um agente humano.",
+                        StatusAtualizado = false
+                    };
+                }
+
                 // 2. Buscar ou criar usuário Bot
                 var botUsuarioId = await ObterOuCriarBotUsuarioAsync(tenantId, ct);
 
@@ -113,22 +129,38 @@ namespace CarTechAssist.Application.Services
                     throw new InvalidOperationException("Serviço de IA não está habilitado. Verifique a configuração do OpenRouter no appsettings.json.");
                 }
 
-                // 6. Chamar a IA
+                // 6. Chamar a IA e medir latência
                 _logger.LogInformation("📤 Enviando contexto para IA. Tamanho do contexto: {Tamanho} caracteres", contexto.Length);
+                var inicioChamada = DateTime.UtcNow;
                 var respostaIA = await _aiProvider.ResponderAsync(contexto, ct);
-                _logger.LogInformation("📥 Resposta da IA recebida. Tamanho: {Tamanho} caracteres, Modelo: {Modelo}", 
-                    respostaIA.Mensagem?.Length ?? 0, respostaIA.Modelo);
+                var latenciaMs = (int)(DateTime.UtcNow - inicioChamada).TotalMilliseconds;
+                _logger.LogInformation("📥 Resposta da IA recebida. Tamanho: {Tamanho} caracteres, Modelo: {Modelo}, Latência: {Latencia}ms", 
+                    respostaIA.Mensagem?.Length ?? 0, respostaIA.Modelo, latenciaMs);
 
                 // 7. Analisar resposta da IA e extrair ações
-                var acoes = AnalisarRespostaIA(respostaIA.Mensagem ?? string.Empty);
-                _logger.LogInformation("🔍 Ações extraídas da IA: NovoStatus={NovoStatus}, CriarNovoChamado={CriarNovoChamado}", 
-                    acoes.NovoStatus, acoes.CriarNovoChamado != null);
+                var acoes = AnalisarRespostaIA(respostaIA.Mensagem ?? string.Empty, historicoMensagens);
+                _logger.LogInformation("🔍 Ações extraídas da IA: NovoStatus={NovoStatus}, CriarNovoChamado={CriarNovoChamado}, ClientePediuHumano={ClientePediuHumano}", 
+                    acoes.NovoStatus, acoes.CriarNovoChamado != null, acoes.ClientePediuHumano);
+
+                // 7.5. Se cliente pediu para falar com humano, alterar status para Em Andamento
+                if (acoes.ClientePediuHumano && chamado.StatusId == StatusChamado.Pendente)
+                {
+                    _logger.LogInformation("👤 Cliente pediu para falar com humano. Alterando status de Pendente para Em Andamento.");
+                    await _chamadosRepository.AlterarStatusAsync(
+                        chamadoId,
+                        tenantId,
+                        (byte)StatusChamado.EmAndamento,
+                        botUsuarioId,
+                        ct);
+                    acoes.NovoStatus = (byte)StatusChamado.EmAndamento;
+                }
 
                 // 8. Adicionar resposta do bot como interação
                 _logger.LogInformation("💬 Adicionando interação do bot ao chamado {ChamadoId}", chamadoId);
+                long? interacaoId = null;
                 try
                 {
-                    await AdicionarInteracaoBotAsync(
+                    interacaoId = await AdicionarInteracaoBotAsync(
                         chamadoId,
                         tenantId,
                         botUsuarioId,
@@ -137,13 +169,30 @@ namespace CarTechAssist.Application.Services
                         respostaIA.Confianca,
                         respostaIA.ResumoRaciocinio,
                         ct);
-                    _logger.LogInformation("✅ Interação do bot adicionada com sucesso");
+                    _logger.LogInformation("✅ Interação do bot adicionada com sucesso. InteracaoId: {InteracaoId}", interacaoId);
                 }
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "❌ Erro ao adicionar interação do bot. Message: {Message}", ex.Message);
                     // Se falhar ao adicionar interação, ainda retornamos sucesso mas sem a mensagem
                     // Isso evita que o erro impeça o processamento completo
+                }
+
+                // 8.5. Salvar log de execução da IA
+                try
+                {
+                    await SalvarIARunLogAsync(
+                        tenantId,
+                        chamadoId,
+                        interacaoId,
+                        respostaIA,
+                        contexto,
+                        latenciaMs,
+                        ct);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "⚠️ Erro ao salvar log de execução da IA. Continuando...");
                 }
 
                 // 9. Atualizar status se necessário
@@ -228,9 +277,34 @@ namespace CarTechAssist.Application.Services
                     throw new InvalidOperationException($"Chamado {chamadoId} não encontrado.");
                 }
 
+                // Verificar se o chamado foi criado por um cliente (IA não processa chamados de Agente ou Admin)
+                var solicitante = await _usuariosRepository.ObterPorIdAsync(chamado.SolicitanteUsuarioId, ct);
+                if (solicitante == null)
+                {
+                    _logger.LogWarning("⚠️ Solicitante {SolicitanteUsuarioId} não encontrado para o chamado {ChamadoId}. Pulando processamento IA.", chamado.SolicitanteUsuarioId, chamadoId);
+                    throw new InvalidOperationException("Solicitante do chamado não encontrado.");
+                }
+
+                _logger.LogInformation("🔍 Solicitante encontrado: UsuarioId={UsuarioId}, TipoUsuarioId={TipoUsuarioId}, Nome={Nome}", 
+                    solicitante.UsuarioId, solicitante.TipoUsuarioId, solicitante.NomeCompleto);
+
+                if ((byte)solicitante.TipoUsuarioId != (byte)TipoUsuarios.Cliente)
+                {
+                    _logger.LogInformation("⏸️ Chamado {ChamadoId} não foi criado por um cliente (TipoUsuarioId={TipoUsuarioId}). IA não processa chamados de Agente ou Admin.", 
+                        chamadoId, solicitante.TipoUsuarioId);
+                    throw new InvalidOperationException($"Chamado criado por {solicitante.TipoUsuarioId}. A IA só processa chamados criados por clientes.");
+                }
+
+                // Verificar se o chamado pode ser processado pela IA
+                if (!PodeProcessarChamado(chamado.StatusId))
+                {
+                    var statusNome = EnumHelperService.GetStatusNome(chamado.StatusId);
+                    _logger.LogInformation("⏸️ Chamado {ChamadoId} com status {Status} não pode ser processado pela IA. Apenas agente humano pode atender.", chamadoId, statusNome);
+                    throw new InvalidOperationException($"Este chamado está com status '{statusNome}' e não pode ser processado pela IA. Entre em contato com um agente humano.");
+                }
+
                 var botUsuarioId = await ObterOuCriarBotUsuarioAsync(tenantId, ct);
                 var interacoes = await _chamadosRepository.ListarInteracoesAsync(chamadoId, tenantId, ct);
-                var solicitante = await _usuariosRepository.ObterPorIdAsync(chamado.SolicitanteUsuarioId, ct);
 
                 var historicoMensagens = new List<MensagemHistorico>();
                 foreach (var i in interacoes.OrderBy(i => i.DataCriacao))
@@ -252,10 +326,25 @@ namespace CarTechAssist.Application.Services
                 });
 
                 var contexto = ConstruirContexto(chamado, solicitante, historicoMensagens);
+                var inicioChamada = DateTime.UtcNow;
                 var respostaIA = await _aiProvider.ResponderAsync(contexto, ct);
-                var acoes = AnalisarRespostaIA(respostaIA.Mensagem);
+                var latenciaMs = (int)(DateTime.UtcNow - inicioChamada).TotalMilliseconds;
+                var acoes = AnalisarRespostaIA(respostaIA.Mensagem, historicoMensagens);
 
-                await AdicionarInteracaoBotAsync(
+                // Se cliente pediu para falar com humano, alterar status para Em Andamento
+                if (acoes.ClientePediuHumano && chamado.StatusId == StatusChamado.Pendente)
+                {
+                    _logger.LogInformation("👤 Cliente pediu para falar com humano. Alterando status de Pendente para Em Andamento.");
+                    await _chamadosRepository.AlterarStatusAsync(
+                        chamadoId,
+                        tenantId,
+                        (byte)StatusChamado.EmAndamento,
+                        botUsuarioId,
+                        ct);
+                    acoes.NovoStatus = (byte)StatusChamado.EmAndamento;
+                }
+
+                long? interacaoId = await AdicionarInteracaoBotAsync(
                     chamadoId,
                     tenantId,
                     botUsuarioId,
@@ -264,6 +353,23 @@ namespace CarTechAssist.Application.Services
                     respostaIA.Confianca,
                     respostaIA.ResumoRaciocinio,
                     ct);
+
+                // Salvar log de execução da IA
+                try
+                {
+                    await SalvarIARunLogAsync(
+                        tenantId,
+                        chamadoId,
+                        interacaoId,
+                        respostaIA,
+                        contexto,
+                        latenciaMs,
+                        ct);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "⚠️ Erro ao salvar log de execução da IA. Continuando...");
+                }
 
                 bool statusAtualizado = false;
                 if (acoes.NovoStatus.HasValue && acoes.NovoStatus.Value != (byte)chamado.StatusId)
@@ -296,7 +402,11 @@ namespace CarTechAssist.Application.Services
         {
             var sb = new StringBuilder();
 
-            sb.AppendLine("Você é um assistente de suporte técnico do CarTechAssist, responsável por atender chamados abertos por clientes.");
+            // Cumprimento baseado no horário
+            var horaAtual = DateTime.UtcNow.AddHours(-3); // UTC-3 (Brasil)
+            var cumprimento = ObterCumprimentoPorHorario(horaAtual);
+
+            sb.AppendLine($"{cumprimento}! Você é um assistente de suporte técnico do CarTechAssist, responsável por atender chamados abertos por clientes.");
             sb.AppendLine();
             sb.AppendLine("SUAS RESPONSABILIDADES:");
             sb.AppendLine("1. Ler e entender o problema do cliente");
@@ -305,6 +415,26 @@ namespace CarTechAssist.Application.Services
             sb.AppendLine("4. Atualizar o status do chamado conforme o andamento");
             sb.AppendLine("5. Encaminhar para um agente humano quando necessário");
             sb.AppendLine("6. Criar novos chamados relacionados quando fizer sentido");
+            sb.AppendLine();
+            sb.AppendLine("ESCOPO DE ATENDIMENTO - O QUE VOCÊ PODE FAZER:");
+            sb.AppendLine("Você DEVE atender APENAS questões relacionadas a:");
+            sb.AppendLine("- Problemas técnicos de TI (hardware, software, sistemas)");
+            sb.AppendLine("- Infraestrutura de TI (servidores, redes, conectividade)");
+            sb.AppendLine("- Logs e diagnóstico de sistemas");
+            sb.AppendLine("- Problemas com o sistema CarTechAssist");
+            sb.AppendLine("- Helpdesk e suporte técnico relacionado a sistemas");
+            sb.AppendLine();
+            sb.AppendLine("ESCOPO DE ATENDIMENTO - O QUE VOCÊ NÃO PODE FAZER:");
+            sb.AppendLine("Você NÃO DEVE responder sobre:");
+            sb.AppendLine("- Assuntos não relacionados a TI, Infraestrutura, Logs ou Sistemas");
+            sb.AppendLine("- Questões financeiras, comerciais ou administrativas");
+            sb.AppendLine("- Problemas pessoais ou questões não técnicas");
+            sb.AppendLine("- Qualquer assunto fora do escopo de helpdesk técnico");
+            sb.AppendLine();
+            sb.AppendLine("Se o cliente perguntar algo fora do seu escopo, você DEVE:");
+            sb.AppendLine("1. Educadamente informar que você só pode ajudar com questões técnicas de TI, Infraestrutura, Logs e Sistemas");
+            sb.AppendLine("2. Sugerir que o cliente entre em contato com um agente humano para questões não técnicas");
+            sb.AppendLine("3. Perguntar se há alguma questão técnica relacionada ao sistema que você possa ajudar");
             sb.AppendLine();
             sb.AppendLine("INFORMAÇÕES DO CHAMADO:");
             sb.AppendLine($"- Número: {chamado.Numero}");
@@ -325,8 +455,11 @@ namespace CarTechAssist.Application.Services
             sb.AppendLine("DIRETRIZES:");
             sb.AppendLine("- Se você acreditar que o problema foi resolvido, pergunte explicitamente ao cliente se a situação foi solucionada.");
             sb.AppendLine("- Se o cliente confirmar que está tudo certo, atualize o status para 5 (Fechado).");
-            sb.AppendLine("- Se o cliente disser que ainda não está resolvido, pergunte se ele deseja que o chamado seja direcionado para um agente humano.");
-            sb.AppendLine("- Se ele concordar, altere o status para 2 (Em Andamento) para indicar que um agente humano assumirá.");
+            sb.AppendLine("- Se o cliente pedir para falar com um humano, agente, atendente ou pessoa (ex: 'quero falar com alguém', 'me passe um humano', 'quero um atendente'), você DEVE:");
+            sb.AppendLine("  * Imediatamente alterar o status para 2 (Em Andamento)");
+            sb.AppendLine("  * Informar que o chamado foi encaminhado para um agente humano");
+            sb.AppendLine("  * Após isso, a IA não poderá mais atender este chamado");
+            sb.AppendLine("- Se o cliente disser que ainda não está resolvido (mas não pediu humano), pergunte se ele deseja que o chamado seja direcionado para um agente humano.");
             sb.AppendLine("- Se faltar informação essencial, pergunte ao cliente de forma clara e objetiva e atualize o status para 3 (Pendente).");
             sb.AppendLine("- Se surgir outra demanda que precise ser tratada separadamente, informe que você irá criar um novo chamado relacionado.");
             sb.AppendLine();
@@ -362,9 +495,26 @@ namespace CarTechAssist.Application.Services
             public DateTime Data { get; set; }
         }
 
-        private AcoesIA AnalisarRespostaIA(string resposta)
+        private AcoesIA AnalisarRespostaIA(string resposta, List<MensagemHistorico> historicoMensagens)
         {
             var acoes = new AcoesIA();
+
+            // Verificar se cliente pediu para falar com humano (na última mensagem do cliente)
+            var ultimaMensagemCliente = historicoMensagens
+                .Where(m => m.Autor == "Cliente")
+                .OrderByDescending(m => m.Data)
+                .FirstOrDefault();
+
+            if (ultimaMensagemCliente != null)
+            {
+                var mensagemLower = ultimaMensagemCliente.Mensagem.ToLowerInvariant();
+                var palavrasChave = new[] { "humano", "pessoa", "atendente", "agente", "alguém", "alguem", "operador", "suporte humano" };
+                if (palavrasChave.Any(palavra => mensagemLower.Contains(palavra)))
+                {
+                    acoes.ClientePediuHumano = true;
+                    _logger.LogInformation("🔍 Detectado pedido do cliente para falar com humano na mensagem: {Mensagem}", ultimaMensagemCliente.Mensagem);
+                }
+            }
 
             // Extrair status
             var statusMatch = System.Text.RegularExpressions.Regex.Match(resposta, @"\[STATUS:(\d+)\]");
@@ -387,6 +537,26 @@ namespace CarTechAssist.Application.Services
             }
 
             return acoes;
+        }
+
+        private bool PodeProcessarChamado(StatusChamado statusId)
+        {
+            // IA não pode processar chamados finalizados ou em andamento (após pedido de humano)
+            return statusId != StatusChamado.Resolvido 
+                && statusId != StatusChamado.Fechado 
+                && statusId != StatusChamado.Cancelado
+                && statusId != StatusChamado.EmAndamento; // Em Andamento significa que foi encaminhado para humano
+        }
+
+        private string ObterCumprimentoPorHorario(DateTime hora)
+        {
+            var horaLocal = hora.Hour;
+            if (horaLocal >= 5 && horaLocal < 12)
+                return "Bom dia";
+            else if (horaLocal >= 12 && horaLocal < 18)
+                return "Boa tarde";
+            else
+                return "Boa noite";
         }
 
         private async Task<int> ObterOuCriarBotUsuarioAsync(int tenantId, CancellationToken ct)
@@ -453,7 +623,7 @@ namespace CarTechAssist.Application.Services
             return (hash, salt);
         }
 
-        private async Task AdicionarInteracaoBotAsync(
+        private async Task<long?> AdicionarInteracaoBotAsync(
             long chamadoId,
             int tenantId,
             int botUsuarioId,
@@ -468,7 +638,7 @@ namespace CarTechAssist.Application.Services
             mensagemLimpa = System.Text.RegularExpressions.Regex.Replace(mensagemLimpa, @"\[NOVO_CHAMADO:.*?\]", "");
 
             // Usar o método existente de adicionar interação IA
-            await _chamadosRepository.AdicionarInteracaoIaAsync(
+            var chamadoAtualizado = await _chamadosRepository.AdicionarInteracaoIaAsync(
                 chamadoId,
                 tenantId,
                 modelo,
@@ -480,12 +650,74 @@ namespace CarTechAssist.Application.Services
                 null,
                 null,
                 ct);
+
+            // Buscar a interação recém-criada para obter o ID
+            var interacoes = await _chamadosRepository.ListarInteracoesAsync(chamadoId, tenantId, ct);
+            var ultimaInteracao = interacoes
+                .Where(i => i.AutorTipoUsuarioId == TipoUsuarios.Bot)
+                .OrderByDescending(i => i.DataCriacao)
+                .FirstOrDefault();
+
+            return ultimaInteracao?.InteracaoId;
+        }
+
+        private async Task SalvarIARunLogAsync(
+            int tenantId,
+            long? chamadoId,
+            long? interacaoId,
+            (string Provedor, string Modelo, string Mensagem, decimal? Confianca, string? ResumoRaciocinio, int? InputTokens, int? outputTokens, decimal? CustoUsd) respostaIA,
+            string prompt,
+            int latenciaMs,
+            CancellationToken ct)
+        {
+            if (_iaRunLogRepository == null)
+            {
+                _logger.LogDebug("⚠️ IIARunLogRepository não está registrado. Pulando salvamento de log.");
+                return;
+            }
+
+            try
+            {
+                // Calcular hash do prompt
+                byte[]? promptHash = null;
+                if (!string.IsNullOrEmpty(prompt))
+                {
+                    using var sha256 = System.Security.Cryptography.SHA256.Create();
+                    promptHash = sha256.ComputeHash(System.Text.Encoding.UTF8.GetBytes(prompt));
+                }
+
+                var runLog = new IARunLog
+                {
+                    TenantId = tenantId,
+                    ChamadoId = chamadoId,
+                    InteracaoId = interacaoId,
+                    Provedor = respostaIA.Provedor,
+                    Modelo = respostaIA.Modelo,
+                    PromptHash = promptHash,
+                    InputTokens = respostaIA.InputTokens,
+                    OutputTokens = respostaIA.outputTokens,
+                    LatenciaMs = latenciaMs,
+                    CustoUSD = respostaIA.CustoUsd,
+                    Confianca = respostaIA.Confianca,
+                    TipoResultado = "Sucesso",
+                    DataCriacao = DateTime.UtcNow
+                };
+
+                var runId = await _iaRunLogRepository.CriarAsync(runLog, ct);
+                _logger.LogInformation("✅ Log de execução da IA salvo. IARunId: {IARunId}", runId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Erro ao salvar log de execução da IA");
+                throw;
+            }
         }
 
         private class AcoesIA
         {
             public byte? NovoStatus { get; set; }
             public NovoChamadoInfo? CriarNovoChamado { get; set; }
+            public bool ClientePediuHumano { get; set; }
         }
 
         private class NovoChamadoInfo
