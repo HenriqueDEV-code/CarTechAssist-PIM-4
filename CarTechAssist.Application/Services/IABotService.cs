@@ -119,17 +119,20 @@ namespace CarTechAssist.Application.Services
                     });
                 }
 
-                // 4. Construir contexto para a IA
-                var contexto = ConstruirContexto(chamado, solicitante, historicoMensagens);
+                // 4. Contar mensagens consecutivas fora do escopo (para chamados novos, será 0)
+                var contadorForaEscopo = ContarMensagensConsecutivasForaEscopo(historicoMensagens);
+                
+                // 5. Construir contexto para a IA
+                var contexto = ConstruirContexto(chamado, solicitante, historicoMensagens, contadorForaEscopo);
 
-                // 5. Verificar se a IA está habilitada
+                // 6. Verificar se a IA está habilitada
                 if (_aiProvider is OpenRouterService openRouter && !openRouter.EstaHabilitado())
                 {
                     _logger.LogWarning("⚠️ OpenRouter não está habilitado. Verifique a configuração no appsettings.json");
                     throw new InvalidOperationException("Serviço de IA não está habilitado. Verifique a configuração do OpenRouter no appsettings.json.");
                 }
 
-                // 6. Chamar a IA e medir latência
+                // 7. Chamar a IA e medir latência
                 _logger.LogInformation("📤 Enviando contexto para IA. Tamanho do contexto: {Tamanho} caracteres", contexto.Length);
                 var inicioChamada = DateTime.UtcNow;
                 var respostaIA = await _aiProvider.ResponderAsync(contexto, ct);
@@ -137,10 +140,34 @@ namespace CarTechAssist.Application.Services
                 _logger.LogInformation("📥 Resposta da IA recebida. Tamanho: {Tamanho} caracteres, Modelo: {Modelo}, Latência: {Latencia}ms", 
                     respostaIA.Mensagem?.Length ?? 0, respostaIA.Modelo, latenciaMs);
 
-                // 7. Analisar resposta da IA e extrair ações
-                var acoes = AnalisarRespostaIA(respostaIA.Mensagem ?? string.Empty, historicoMensagens);
-                _logger.LogInformation("🔍 Ações extraídas da IA: NovoStatus={NovoStatus}, CriarNovoChamado={CriarNovoChamado}, ClientePediuHumano={ClientePediuHumano}", 
-                    acoes.NovoStatus, acoes.CriarNovoChamado != null, acoes.ClientePediuHumano);
+                // 8. Verificar se a resposta indica que está fora do escopo
+                var estaForaEscopo = RespostaIndicaForaEscopo(respostaIA.Mensagem ?? string.Empty);
+                var mensagemFinal = respostaIA.Mensagem ?? string.Empty;
+                
+                // 9. Se estiver fora do escopo e for a 3ª vez consecutiva, forçar encerramento
+                if (estaForaEscopo && contadorForaEscopo >= 2)
+                {
+                    _logger.LogWarning("⚠️ Cliente enviou {Contador} mensagens consecutivas fora do escopo. Forçando encerramento do chamado {ChamadoId}.", 
+                        contadorForaEscopo + 1, chamadoId);
+                    
+                    // Modificar a mensagem para colocar o ⚠️ no início e não repetir no final
+                    if (!mensagemFinal.StartsWith("⚠️"))
+                    {
+                        mensagemFinal = "⚠️ " + mensagemFinal;
+                    }
+                }
+                
+                // 10. Analisar resposta da IA e extrair ações
+                var acoes = AnalisarRespostaIA(mensagemFinal, historicoMensagens);
+                
+                // Se for a 3ª vez fora do escopo, forçar encerramento
+                if (estaForaEscopo && contadorForaEscopo >= 2)
+                {
+                    acoes.NovoStatus = (byte)StatusChamado.Fechado;
+                }
+                
+                _logger.LogInformation("🔍 Ações extraídas da IA: NovoStatus={NovoStatus}, CriarNovoChamado={CriarNovoChamado}, ClientePediuHumano={ClientePediuHumano}, ForaEscopo={ForaEscopo}, ContadorForaEscopo={Contador}", 
+                    acoes.NovoStatus, acoes.CriarNovoChamado != null, acoes.ClientePediuHumano, estaForaEscopo, contadorForaEscopo);
 
                 // 7.5. Se cliente pediu para falar com humano, alterar status para Em Andamento
                 if (acoes.ClientePediuHumano && chamado.StatusId == StatusChamado.Pendente)
@@ -164,7 +191,7 @@ namespace CarTechAssist.Application.Services
                         chamadoId,
                         tenantId,
                         botUsuarioId,
-                        respostaIA.Mensagem ?? string.Empty,
+                        mensagemFinal,
                         respostaIA.Modelo,
                         respostaIA.Confianca,
                         respostaIA.ResumoRaciocinio,
@@ -325,11 +352,38 @@ namespace CarTechAssist.Application.Services
                     Data = DateTime.UtcNow
                 });
 
-                var contexto = ConstruirContexto(chamado, solicitante, historicoMensagens);
+                // Contar quantas mensagens consecutivas do cliente foram fora do escopo
+                var contadorForaEscopo = ContarMensagensConsecutivasForaEscopo(historicoMensagens);
+                _logger.LogInformation("🔍 Contador de mensagens fora do escopo: {Contador}", contadorForaEscopo);
+
+                var contexto = ConstruirContexto(chamado, solicitante, historicoMensagens, contadorForaEscopo);
                 var inicioChamada = DateTime.UtcNow;
                 var respostaIA = await _aiProvider.ResponderAsync(contexto, ct);
                 var latenciaMs = (int)(DateTime.UtcNow - inicioChamada).TotalMilliseconds;
-                var acoes = AnalisarRespostaIA(respostaIA.Mensagem, historicoMensagens);
+                // Verificar se a resposta da IA indica que está fora do escopo
+                var estaForaEscopo = RespostaIndicaForaEscopo(respostaIA.Mensagem ?? string.Empty);
+                var mensagemFinal = respostaIA.Mensagem ?? string.Empty;
+                
+                // Se estiver fora do escopo e for a 3ª vez consecutiva, encerrar o chamado
+                if (estaForaEscopo && contadorForaEscopo >= 2)
+                {
+                    _logger.LogWarning("⚠️ Cliente enviou {Contador} mensagens consecutivas fora do escopo. Encerrando chamado {ChamadoId}.", 
+                        contadorForaEscopo + 1, chamadoId);
+                    
+                    // Modificar a mensagem para colocar o ⚠️ no início e não repetir no final
+                    if (!mensagemFinal.StartsWith("⚠️"))
+                    {
+                        mensagemFinal = "⚠️ " + mensagemFinal;
+                    }
+                }
+                
+                var acoes = AnalisarRespostaIA(mensagemFinal, historicoMensagens);
+                
+                // Se estiver fora do escopo e for a 3ª vez consecutiva, forçar encerramento
+                if (estaForaEscopo && contadorForaEscopo >= 2)
+                {
+                    acoes.NovoStatus = (byte)StatusChamado.Fechado;
+                }
 
                 // Se cliente pediu para falar com humano, alterar status para Em Andamento
                 if (acoes.ClientePediuHumano && chamado.StatusId == StatusChamado.Pendente)
@@ -348,7 +402,7 @@ namespace CarTechAssist.Application.Services
                     chamadoId,
                     tenantId,
                     botUsuarioId,
-                    respostaIA.Mensagem,
+                    mensagemFinal,
                     respostaIA.Modelo,
                     respostaIA.Confianca,
                     respostaIA.ResumoRaciocinio,
@@ -398,7 +452,7 @@ namespace CarTechAssist.Application.Services
             }
         }
 
-        private string ConstruirContexto(Chamado chamado, Usuario? solicitante, List<MensagemHistorico> historicoMensagens)
+        private string ConstruirContexto(Chamado chamado, Usuario? solicitante, List<MensagemHistorico> historicoMensagens, int contadorForaEscopo = 0)
         {
             var sb = new StringBuilder();
 
@@ -436,6 +490,27 @@ namespace CarTechAssist.Application.Services
             sb.AppendLine("2. Sugerir que o cliente entre em contato com um agente humano para questões não técnicas");
             sb.AppendLine("3. Perguntar se há alguma questão técnica relacionada ao sistema que você possa ajudar");
             sb.AppendLine();
+            
+            // Adicionar avisos progressivos sobre encerramento
+            if (contadorForaEscopo > 0)
+            {
+                sb.AppendLine("⚠️ ATENÇÃO - CONTROLE DE MENSAGENS FORA DO ESCOPO:");
+                if (contadorForaEscopo == 1)
+                {
+                    sb.AppendLine("Esta é a SEGUNDA vez consecutiva que o cliente está enviando mensagens fora do escopo.");
+                    sb.AppendLine("Você DEVE avisar o cliente que, se ele continuar enviando mensagens fora do escopo de atendimento técnico, o chamado será ENCERRADO.");
+                    sb.AppendLine("Seja educado mas firme: 'Se você continuar enviando mensagens que não são relacionadas a questões técnicas, este chamado será encerrado. Por favor, envie apenas questões técnicas relacionadas a TI, Infraestrutura, Logs ou Sistemas.'");
+                }
+                else if (contadorForaEscopo >= 2)
+                {
+                    sb.AppendLine("Esta é a TERCEIRA ou mais vez consecutiva que o cliente está enviando mensagens fora do escopo.");
+                    sb.AppendLine("Você DEVE ENCERRAR o chamado imediatamente usando [STATUS:5].");
+                    sb.AppendLine("Informe ao cliente que, como ele continuou enviando mensagens fora do escopo, o chamado será encerrado.");
+                    sb.AppendLine("IMPORTANTE: Coloque o símbolo ⚠️ no INÍCIO da sua mensagem (ex: '⚠️ Como você continuou enviando mensagens fora do escopo de atendimento técnico, este chamado será encerrado. Se precisar de ajuda técnica, por favor, crie um novo chamado.').");
+                    sb.AppendLine("NÃO repita a mensagem no final - apenas coloque o ⚠️ no início da sua resposta.");
+                }
+                sb.AppendLine();
+            }
             sb.AppendLine("INFORMAÇÕES DO CHAMADO:");
             sb.AppendLine($"- Número: {chamado.Numero}");
             sb.AppendLine($"- Título: {chamado.Titulo}");
@@ -557,6 +632,78 @@ namespace CarTechAssist.Application.Services
                 return "Boa tarde";
             else
                 return "Boa noite";
+        }
+
+        /// <summary>
+        /// Conta quantas mensagens consecutivas do cliente foram fora do escopo.
+        /// Verifica as últimas interações para detectar padrão de mensagens fora do escopo.
+        /// </summary>
+        private int ContarMensagensConsecutivasForaEscopo(List<MensagemHistorico> historicoMensagens)
+        {
+            if (historicoMensagens == null || historicoMensagens.Count < 2)
+                return 0;
+
+            var contador = 0;
+            var mensagensOrdenadas = historicoMensagens.OrderByDescending(m => m.Data).ToList();
+
+            // Percorrer do mais recente para o mais antigo
+            for (int i = 0; i < mensagensOrdenadas.Count - 1; i++)
+            {
+                var mensagemAtual = mensagensOrdenadas[i];
+                var mensagemAnterior = mensagensOrdenadas[i + 1];
+
+                // Se a mensagem atual é da IA e a anterior é do Cliente
+                if (mensagemAtual.Autor == "IA" && mensagemAnterior.Autor == "Cliente")
+                {
+                    // Verificar se a resposta da IA indica que está fora do escopo
+                    if (RespostaIndicaForaEscopo(mensagemAtual.Mensagem))
+                    {
+                        contador++;
+                    }
+                    else
+                    {
+                        // Se encontrou uma resposta que não está fora do escopo, para a contagem
+                        break;
+                    }
+                }
+            }
+
+            return contador;
+        }
+
+        /// <summary>
+        /// Verifica se a resposta da IA indica que o cliente está fora do escopo de atendimento.
+        /// </summary>
+        private bool RespostaIndicaForaEscopo(string respostaIA)
+        {
+            if (string.IsNullOrWhiteSpace(respostaIA))
+                return false;
+
+            var respostaLower = respostaIA.ToLowerInvariant();
+            
+            // Palavras-chave que indicam que a IA está informando que está fora do escopo
+            var indicadoresForaEscopo = new[]
+            {
+                "não posso ajudar",
+                "não posso auxiliar",
+                "meu escopo",
+                "escopo de atendimento",
+                "questões técnicas",
+                "questões não técnicas",
+                "fora do escopo",
+                "não relacionadas a ti",
+                "não relacionadas a infraestrutura",
+                "agente humano para questões não técnicas",
+                "só posso ajudar com questões técnicas",
+                "apenas questões técnicas",
+                "limita a questões técnicas",
+                "não posso ajudar com",
+                "não posso auxiliar com",
+                "questões pessoais",
+                "questões não técnicas"
+            };
+
+            return indicadoresForaEscopo.Any(indicador => respostaLower.Contains(indicador));
         }
 
         private async Task<int> ObterOuCriarBotUsuarioAsync(int tenantId, CancellationToken ct)

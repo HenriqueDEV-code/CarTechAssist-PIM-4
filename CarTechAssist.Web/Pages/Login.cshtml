@@ -68,11 +68,13 @@
             background-position: center;
             background-repeat: no-repeat;
             opacity: 0;
-            transition: opacity 1.5s ease-in-out;
+            transition: opacity 3s ease-in-out;
+            transform: scale(1.05);
         }
 
         .carousel-slide.active {
             opacity: 1;
+            transform: scale(1);
         }
 
         /* Overlay escuro + halos verdes sutis */
@@ -399,7 +401,15 @@
                 'Car8.jpg',
                 'Car9.jpg',
                 'Car10.jpg',
-                'Car11.jpg'
+                'Car11.jpg',
+                'Car12.jpg',
+                'Car13.jpg',
+                'Car14.jpg',
+                'Car15.jpg',
+                'Car16.jpg',
+                'Car17.jpg',
+                'Car18.jpg',
+                'Car19.jpg'
             ];
             let currentIndex = 0;
             
@@ -411,24 +421,37 @@
                 carouselContainer.appendChild(slide);
             });
             
-            // Função para alternar para o próximo slide
+            // Função para alternar para o próximo slide com transição suave
             function nextSlide() {
                 const slides = document.querySelectorAll('.carousel-slide');
                 if (slides.length === 0) return;
                 
-                // Remover classe active do slide atual
-                slides[currentIndex].classList.remove('active');
+                // Remover classe active do slide atual com delay para transição suave
+                const currentSlide = slides[currentIndex];
+                currentSlide.classList.remove('active');
                 
-                // Avançar para o próximo slide (circular)
-                currentIndex = (currentIndex + 1) % slides.length;
-                
-                // Adicionar classe active ao novo slide
-                slides[currentIndex].classList.add('active');
+                // Pequeno delay para garantir transição suave
+                setTimeout(() => {
+                    // Avançar para o próximo slide (circular)
+                    currentIndex = (currentIndex + 1) % slides.length;
+                    
+                    // Adicionar classe active ao novo slide
+                    const nextSlide = slides[currentIndex];
+                    nextSlide.classList.add('active');
+                }, 50);
             }
             
-            // Iniciar carrossel automático (muda a cada 5 segundos)
-            const intervalTime = 5000; // 5 segundos
+            // Iniciar carrossel automático (muda a cada 6 segundos para melhor experiência)
+            const intervalTime = 6000; // 6 segundos - tempo ideal para visualizar cada imagem
             let carouselInterval = setInterval(nextSlide, intervalTime);
+            
+            // Adicionar efeito de fade suave ao iniciar
+            setTimeout(() => {
+                const firstSlide = document.querySelector('.carousel-slide.active');
+                if (firstSlide) {
+                    firstSlide.style.transition = 'opacity 2s ease-in-out, transform 2s ease-in-out';
+                }
+            }, 100);
             
             // Pausar carrossel quando o mouse está sobre a seção visual
             const visualSection = document.querySelector('.visual-section');
