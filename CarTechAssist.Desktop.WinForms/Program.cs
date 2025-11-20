@@ -1,3 +1,7 @@
+using CarTechAssist.Desktop.WinForms.Forms;
+using CarTechAssist.Desktop.WinForms.Helpers;
+using CarTechAssist.Desktop.WinForms.Services;
+
 namespace CarTechAssist.Desktop.WinForms
 {
     internal static class Program
@@ -8,10 +12,12 @@ namespace CarTechAssist.Desktop.WinForms
         [STAThread]
         static void Main()
         {
-            // To customize application configuration such as set high DPI settings or default font,
-            // see https://aka.ms/applicationconfiguration.
             ApplicationConfiguration.Initialize();
-            Application.Run(new Form1());
+            Application.EnableVisualStyles();
+            Application.SetCompatibleTextRenderingDefault(false);
+
+            // Sempre iniciar no LoginForm
+            Application.Run(new LoginForm());
         }
     }
 }
