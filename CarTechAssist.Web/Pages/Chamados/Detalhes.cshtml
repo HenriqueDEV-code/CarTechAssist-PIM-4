@@ -143,7 +143,16 @@
                         }
                     </div>
                     <div class="d-flex gap-2">
-                        <input type="text" id="mensagemInput" class="form-control" placeholder="Digite sua mensagem..." />
+                        <div class="flex-grow-1 position-relative">
+                            <input type="text" id="mensagemInput" class="form-control" placeholder="Digite sua mensagem..." />
+                            <div id="mensagemBloqueadaInfo" class="alert alert-info mt-2 mb-0" style="display: none; background: var(--bg-secondary); border-color: var(--accent-green);">
+                                <i class="bi bi-info-circle me-2" style="color: var(--accent-green);"></i>
+                                <span style="color: var(--text-primary);">Este chamado está finalizado. Por favor, crie um novo chamado para continuar o atendimento.</span>
+                                <a href="/Chamados/Novo" class="btn btn-sm btn-primary ms-2" style="background: var(--accent-green); border-color: var(--accent-green);">
+                                    <i class="bi bi-plus-circle"></i> Criar Novo Chamado
+                                </a>
+                            </div>
+                        </div>
                         <button type="button" id="btnEnviarMensagem" class="btn btn-primary">
                             <i class="bi bi-send"></i> Enviar
                         </button>
@@ -307,6 +316,13 @@
         // Enviar mensagem
         document.getElementById('btnEnviarMensagem')?.addEventListener('click', async function() {
             const input = document.getElementById('mensagemInput');
+            
+            // Verificar se o campo está desabilitado (chamado finalizado para cliente)
+            if (input?.disabled) {
+                alert('Este chamado está finalizado. Por favor, crie um novo chamado para continuar o atendimento.');
+                return;
+            }
+            
             const mensagem = input?.value?.trim();
             
             if (!mensagem) {
@@ -366,17 +382,27 @@
                 console.error('Erro:', error);
                 alert(error.message || 'Erro ao enviar mensagem. Tente novamente.');
             } finally {
-                btn.disabled = false;
-                btn.innerHTML = '<i class="bi bi-send"></i> Enviar';
-                input.disabled = false;
-                input.focus();
+                // Só reabilitar se o chamado não estiver finalizado
+                const deveBloquear = isCliente && statusBloqueados.includes(statusAtual);
+                if (!deveBloquear) {
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="bi bi-send"></i> Enviar';
+                    input.disabled = false;
+                    input.focus();
+                } else {
+                    // Manter desabilitado se o chamado estiver finalizado
+                    atualizarEstadoMensagem();
+                }
             }
         });
 
         // Enter para enviar mensagem
         document.getElementById('mensagemInput')?.addEventListener('keypress', function(e) {
             if (e.key === 'Enter') {
-                document.getElementById('btnEnviarMensagem')?.click();
+                // Não enviar se o campo estiver desabilitado
+                if (!this.disabled) {
+                    document.getElementById('btnEnviarMensagem')?.click();
+                }
             }
         });
 
@@ -389,6 +415,48 @@
         let atualizando = false;
         let intervaloAtualizacao = null;
         let botProcessando = false;
+        
+        // Status que bloqueiam mensagens para clientes
+        const statusBloqueados = [4, 5, 6]; // Resolvido, Fechado, Cancelado
+        
+        // Função para verificar e atualizar o estado do campo de mensagem
+        function atualizarEstadoMensagem() {
+            const mensagemInput = document.getElementById('mensagemInput');
+            const btnEnviar = document.getElementById('btnEnviarMensagem');
+            const mensagemBloqueadaInfo = document.getElementById('mensagemBloqueadaInfo');
+            
+            if (!mensagemInput || !btnEnviar) return;
+            
+            // Só bloqueia se for cliente e o status estiver bloqueado
+            const deveBloquear = isCliente && statusBloqueados.includes(statusAtual);
+            
+            if (deveBloquear) {
+                mensagemInput.disabled = true;
+                mensagemInput.placeholder = "Este chamado está finalizado. Crie um novo chamado para continuar.";
+                mensagemInput.style.cursor = 'not-allowed';
+                mensagemInput.style.opacity = '0.6';
+                btnEnviar.disabled = true;
+                btnEnviar.style.cursor = 'not-allowed';
+                btnEnviar.style.opacity = '0.6';
+                if (mensagemBloqueadaInfo) {
+                    mensagemBloqueadaInfo.style.display = 'block';
+                }
+            } else {
+                mensagemInput.disabled = false;
+                mensagemInput.placeholder = "Digite sua mensagem...";
+                mensagemInput.style.cursor = 'text';
+                mensagemInput.style.opacity = '1';
+                btnEnviar.disabled = false;
+                btnEnviar.style.cursor = 'pointer';
+                btnEnviar.style.opacity = '1';
+                if (mensagemBloqueadaInfo) {
+                    mensagemBloqueadaInfo.style.display = 'none';
+                }
+            }
+        }
+        
+        // Verificar estado inicial ao carregar a página
+        atualizarEstadoMensagem();
 
         // Função para buscar novas mensagens e atualizar status
         async function verificarAtualizacoes() {
@@ -452,6 +520,10 @@
                 // Atualiza a classe do badge baseado no status
                 statusBadge.className = `badge ${getStatusBadgeClass(novoStatusId)} ms-2`;
             }
+            
+            // Atualizar estado do campo de mensagem quando o status mudar
+            statusAtual = novoStatusId;
+            atualizarEstadoMensagem();
         }
 
         // Função auxiliar para obter a classe do badge do status
