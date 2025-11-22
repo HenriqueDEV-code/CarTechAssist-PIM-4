@@ -28,6 +28,9 @@ namespace CarTechAssist.Desktop.WinForms.Forms
         private byte _tipoUsuarioId;
         private byte _statusAtual;
 
+
+
+        // Detalhes de Chamado Forms
         public ChamadoDetalhesForm(ApiClientService apiClient, long chamadoId)
         {
             _apiClient = apiClient;
