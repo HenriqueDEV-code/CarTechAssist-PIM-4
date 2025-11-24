@@ -19,6 +19,7 @@ namespace CarTechAssist.Desktop.WinForms.Forms
         private LinkLabel lnkForgotPassword;
         private LinkLabel lnkRegister;
 
+        // Inicializador do Formulário de Login
         public LoginForm()
         {
             _apiClient = new ApiClientService();
