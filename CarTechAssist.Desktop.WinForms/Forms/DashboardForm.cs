@@ -552,10 +552,11 @@ namespace CarTechAssist.Desktop.WinForms.Forms
                 panelChatBot = new Panel
                 {
                     Location = new Point(25, infoY),
-                    Size = new Size(330, 120),
+                    Size = new Size(330, 150),
                     BackColor = Color.FromArgb(30, 40, 50),
                     BorderStyle = BorderStyle.FixedSingle,
-                    Padding = new Padding(15)
+                    Padding = new Padding(15, 15, 15, 15),
+                    AutoScroll = true
                 };
                 panelUserInfo.Controls.Add(panelChatBot);
 
@@ -575,7 +576,7 @@ namespace CarTechAssist.Desktop.WinForms.Forms
                     Font = new Font("Segoe UI", 10),
                     ForeColor = Color.FromArgb(200, 200, 200),
                     AutoSize = false,
-                    Size = new Size(300, 80),
+                    Size = new Size(300, 100),
                     Location = new Point(15, 50)
                 };
                 panelChatBot.Controls.Add(lblChatBotText);

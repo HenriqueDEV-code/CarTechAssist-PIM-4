@@ -226,7 +226,7 @@ namespace CarTechAssist.Desktop.WinForms.Forms
                 Font = new Font("Segoe UI", 10),
                 DropDownStyle = ComboBoxStyle.DropDownList
             };
-            cmbStatusFiltro.Items.AddRange(new[] { "Todos", "Aberto", "Em Andamento", "Resolvido", "Cancelado" });
+            cmbStatusFiltro.Items.AddRange(new[] { "Todos", "Aberto", "Em Andamento","Pendente", "Resolvido", "Cancelado" });
             cmbStatusFiltro.SelectedIndex = 0;
             panelFiltros.Controls.Add(cmbStatusFiltro);
 
@@ -242,7 +242,27 @@ namespace CarTechAssist.Desktop.WinForms.Forms
                 Cursor = Cursors.Hand
             };
             btnFiltrar.FlatAppearance.BorderSize = 0;
-            btnFiltrar.Click += BtnFiltrar_Click;
+            // Corrigindo o handler para que o filtro de "Resolvido" e "Cancelado" busquem os status corretos
+            btnFiltrar.Click += (s, e) =>
+            {
+                // O SelectedIndex dos itens:
+                // 0 = Todos, 1 = Aberto, 2 = Em Andamento, 3 = Resolvido, 4 = Cancelado
+                // Chame corretamente passando o status certo do filtro.
+
+                // Em vez de chamar FiltrarChamadosPorStatus (que não existe),
+                // apenas atualize o campo _statusFiltro e chame LoadChamados, igual BtnFiltrar_Click
+                _statusFiltro = cmbStatusFiltro.SelectedIndex switch
+                {
+                    0 => null, // Todos
+                    1 => 1,    // Aberto
+                    2 => 2,    // Em Andamento
+                    3 => 3,    // Pendente
+                    4 => 4,    // Resolvido
+                    5 => 5,    // Cancelado
+                    _ => null
+                };
+                LoadChamados();
+            };
             panelFiltros.Controls.Add(btnFiltrar);
 
             // DataGridView

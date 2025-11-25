@@ -124,9 +124,11 @@ namespace CarTechAssist.Web.Pages
                 return "bg-warning";
             if (statusLower.Contains("andamento") || statusLower == "2")
                 return "bg-info";
-            if (statusLower.Contains("resolvido") || statusLower == "3")
+            if (statusLower.Contains("pendente") || statusLower == "3")
+                return "bg-info";
+            if (statusLower.Contains("resolvido") || statusLower == "4")
                 return "bg-success";
-            if (statusLower.Contains("cancelado") || statusLower == "4")
+            if (statusLower.Contains("cancelado") || statusLower == "5")
                 return "bg-secondary";
 
             return "bg-secondary";
@@ -141,8 +143,9 @@ namespace CarTechAssist.Web.Pages
             {
                 "1" => "Aberto",
                 "2" => "Em Andamento",
-                "3" => "Resolvido",
-                "4" => "Cancelado",
+                "3" => "Pendente",
+                "4" => "Resolvido",
+                "5" => "Cancelado",
                 _ => statusNome
             };
         }

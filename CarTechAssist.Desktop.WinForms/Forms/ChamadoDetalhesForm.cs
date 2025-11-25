@@ -28,8 +28,6 @@ namespace CarTechAssist.Desktop.WinForms.Forms
         private byte _tipoUsuarioId;
         private byte _statusAtual;
 
-
-
         // Detalhes de Chamado Forms
         public ChamadoDetalhesForm(ApiClientService apiClient, long chamadoId)
         {
@@ -91,7 +89,8 @@ namespace CarTechAssist.Desktop.WinForms.Forms
                 Cursor = Cursors.Hand
             };
             btnVoltar.FlatAppearance.BorderSize = 0;
-            btnVoltar.Click += (s, e) => this.Close();
+            // ALTERAÇÃO: Ao clicar, volta para o DashboardForm mantendo o app aberto
+            btnVoltar.Click += BtnVoltar_Click_Handler;
             panelHeader.Controls.Add(btnVoltar);
 
             // Content Panel
@@ -108,10 +107,10 @@ namespace CarTechAssist.Desktop.WinForms.Forms
             panelInfo = new Panel
             {
                 Location = new Point(40, 20),
-                Size = new Size(1300, 200),
+                Size = new Size(1300, 220),
                 BackColor = Color.FromArgb(40, 44, 52),
                 BorderStyle = BorderStyle.None,
-                Padding = new Padding(25)
+                Padding = new Padding(25, 30, 25, 25)
             };
             panelContent.Controls.Add(panelInfo);
 
@@ -121,11 +120,11 @@ namespace CarTechAssist.Desktop.WinForms.Forms
                 Font = new Font("Segoe UI", 16, FontStyle.Bold),
                 ForeColor = Color.White,
                 AutoSize = true,
-                Location = new Point(25, 25)
+                Location = new Point(25, 30)
             };
             panelInfo.Controls.Add(lblInfoTitle);
 
-            int infoY = 70;
+            int infoY = 75;
             int infoX1 = 25;
             int infoX2 = 650;
 
@@ -202,7 +201,7 @@ namespace CarTechAssist.Desktop.WinForms.Forms
                     Font = new Font("Segoe UI", 10),
                     DropDownStyle = ComboBoxStyle.DropDownList
                 };
-                cmbStatus.Items.AddRange(new[] { "Aberto", "Em Andamento", "Pendente", "Resolvido", "Fechado", "Cancelado" });
+                cmbStatus.Items.AddRange(new[] { "Aberto", "Em Andamento", "Pendente",  "Resolvido", "Fechado", "Cancelado" });
                 cmbStatus.SelectedIndexChanged += CmbStatus_SelectedIndexChanged;
                 panelInfo.Controls.Add(cmbStatus);
             }
@@ -210,7 +209,7 @@ namespace CarTechAssist.Desktop.WinForms.Forms
             {
                 lblStatus = new Label
                 {
-                    Text = "-",
+                    Text = "Carregando...",
                     Font = new Font("Segoe UI", 11),
                     ForeColor = Color.FromArgb(76, 175, 80),
                     AutoSize = true,
@@ -317,6 +316,15 @@ namespace CarTechAssist.Desktop.WinForms.Forms
             panelChat.Controls.Add(lblMensagemBloqueada);
 
             this.ResumeLayout(false);
+        }
+
+        // Novo método handler para o botão "Voltar"
+        private void BtnVoltar_Click_Handler(object? sender, EventArgs e)
+        {
+            // Abre o DashboardForm e fecha este form.
+            var dashboardForm = new DashboardForm(_apiClient);
+            dashboardForm.Show();
+            this.Close();
         }
 
         private void TxtMensagem_KeyDown(object? sender, KeyEventArgs e)
