@@ -213,7 +213,7 @@ namespace CarTechAssist.Desktop.WinForms.Forms
             var panelHeader = new Panel
             {
                 Dock = DockStyle.Top,
-                Height = 70,
+                Height = 80,
                 BackColor = Color.FromArgb(40, 44, 52),
                 Padding = new Padding(30, 10, 30, 10)
             };
@@ -236,7 +236,21 @@ namespace CarTechAssist.Desktop.WinForms.Forms
             panelHeader.Controls.Add(btnNavDashboard);
 
             var btnNavChamados = CreateNavButton("🎫 Chamados", btnNavDashboard.Right + 10);
-            btnNavChamados.Click += (s, e) => { var chamados = new ChamadosForm(_apiClient); chamados.Show(); this.Close(); };
+            btnNavChamados.Click += (s, e) =>
+            {
+                NavigationGuard.Begin(NavigationReason.SwitchForm);
+                try
+                {
+                    var chamados = new ChamadosForm(_apiClient);
+                    chamados.Show();
+                    this.Close();
+                }
+                catch
+                {
+                    NavigationGuard.Reset();
+                    throw;
+                }
+            };
             panelHeader.Controls.Add(btnNavChamados);
 
             var btnNavNovo = CreateNavButton("➕ Novo Chamado", btnNavChamados.Right + 10);
@@ -247,7 +261,21 @@ namespace CarTechAssist.Desktop.WinForms.Forms
             if (_tipoUsuarioId == 3)
             {
                 var btnNavUsuarios = CreateNavButton("👥 Usuários", btnNavNovo.Right + 10);
-                btnNavUsuarios.Click += (s, e) => { var usuarios = new UsuariosForm(_apiClient); usuarios.Show(); this.Close(); };
+                btnNavUsuarios.Click += (s, e) =>
+                {
+                    NavigationGuard.Begin(NavigationReason.SwitchForm);
+                    try
+                    {
+                        var usuarios = new UsuariosForm(_apiClient);
+                        usuarios.Show();
+                        this.Close();
+                    }
+                    catch
+                    {
+                        NavigationGuard.Reset();
+                        throw;
+                    }
+                };
                 panelHeader.Controls.Add(btnNavUsuarios);
             }
 
@@ -266,18 +294,24 @@ namespace CarTechAssist.Desktop.WinForms.Forms
 
             var btnLogout = new Button
             {
-                Text = "🚪 Sair",
-                Size = new Size(80, 35),
-                Location = new Point(this.Width - 100, 15),
+                Text = "Logout",
+                Size = new Size(100, 35),
+                Location = new Point(this.Width - 120, 20),
                 Anchor = AnchorStyles.Top | AnchorStyles.Right,
                 BackColor = Color.FromArgb(220, 53, 69),
                 ForeColor = Color.White,
                 FlatStyle = FlatStyle.Flat,
-                Font = new Font("Segoe UI", 10),
+                Font = new Font("Segoe UI", 10, FontStyle.Bold),
                 Cursor = Cursors.Hand
             };
             btnLogout.FlatAppearance.BorderSize = 0;
-            btnLogout.Click += (s, e) => { SessionManager.ClearSession(); _apiClient.ClearAuth(); var login = new LoginForm(); login.Show(); this.Close(); };
+            btnLogout.Click += (s, e) =>
+            {
+                SessionManager.ClearSession();
+                _apiClient.ClearAuth();
+                NavigationGuard.Begin(NavigationReason.Logout);
+                this.Close();
+            };
             panelHeader.Controls.Add(btnLogout);
 
             // Content Panel
@@ -285,7 +319,7 @@ namespace CarTechAssist.Desktop.WinForms.Forms
             {
                 Dock = DockStyle.Fill,
                 BackColor = Color.FromArgb(26, 28, 36),
-                Padding = new Padding(30),
+                Padding = new Padding(30, 50, 30, 30),
                 AutoScroll = true
             };
             this.Controls.Add(panelContent);
@@ -297,7 +331,7 @@ namespace CarTechAssist.Desktop.WinForms.Forms
                 Font = new Font("Segoe UI", 32, FontStyle.Bold),
                 ForeColor = Color.White,
                 AutoSize = true,
-                Location = new Point(30, 20)
+                Location = new Point(30, 10)
             };
             panelContent.Controls.Add(lblWelcome);
 
@@ -307,7 +341,7 @@ namespace CarTechAssist.Desktop.WinForms.Forms
                 Font = new Font("Segoe UI", 14),
                 ForeColor = Color.FromArgb(150, 150, 150),
                 AutoSize = true,
-                Location = new Point(30, 70)
+                Location = new Point(30, 60)
             };
             panelContent.Controls.Add(lblSubtitle);
 
@@ -369,14 +403,15 @@ namespace CarTechAssist.Desktop.WinForms.Forms
             {
                 Dock = DockStyle.Fill,
                 AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
-                BackgroundColor = Color.FromArgb(40, 44, 52),
+                BackgroundColor = Color.FromArgb(32, 34, 44),
                 ForeColor = Color.White,
                 BorderStyle = BorderStyle.None,
                 AllowUserToAddRows = false,
                 ReadOnly = true,
                 SelectionMode = DataGridViewSelectionMode.FullRowSelect,
                 MultiSelect = false,
-                RowHeadersVisible = false
+                RowHeadersVisible = false,
+                EnableHeadersVisualStyles = false
             };
             StyleDataGridView(dgvChamadosRecentes);
             dgvChamadosRecentes.CellDoubleClick += DgvChamadosRecentes_CellDoubleClick;
@@ -597,17 +632,28 @@ namespace CarTechAssist.Desktop.WinForms.Forms
 
         private void StyleDataGridView(DataGridView dgv)
         {
-            dgv.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(30, 30, 30);
-            dgv.ColumnHeadersDefaultCellStyle.ForeColor = Color.White;
-            dgv.ColumnHeadersDefaultCellStyle.Font = new Font("Segoe UI", 11, FontStyle.Bold);
             dgv.EnableHeadersVisualStyles = false;
-            dgv.DefaultCellStyle.BackColor = Color.FromArgb(40, 44, 52);
+            dgv.ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.None;
+            dgv.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
+            dgv.ColumnHeadersHeight = 42;
+            dgv.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(30, 32, 40);
+            dgv.ColumnHeadersDefaultCellStyle.ForeColor = Color.White;
+            dgv.ColumnHeadersDefaultCellStyle.SelectionBackColor = Color.FromArgb(30, 32, 40);
+            dgv.ColumnHeadersDefaultCellStyle.SelectionForeColor = Color.White;
+            dgv.ColumnHeadersDefaultCellStyle.Font = new Font("Segoe UI", 11, FontStyle.Bold);
+
+            dgv.DefaultCellStyle.BackColor = Color.FromArgb(44, 48, 60);
             dgv.DefaultCellStyle.ForeColor = Color.White;
             dgv.DefaultCellStyle.SelectionBackColor = Color.FromArgb(76, 175, 80);
             dgv.DefaultCellStyle.SelectionForeColor = Color.White;
-            dgv.AlternatingRowsDefaultCellStyle.BackColor = Color.FromArgb(50, 54, 62);
+            dgv.DefaultCellStyle.Padding = new Padding(14, 6, 14, 6);
             dgv.DefaultCellStyle.Font = new Font("Segoe UI", 10);
-            dgv.DefaultCellStyle.Padding = new Padding(10, 5, 10, 5);
+
+            dgv.AlternatingRowsDefaultCellStyle.BackColor = Color.FromArgb(52, 56, 70);
+
+            dgv.GridColor = Color.FromArgb(60, 64, 75);
+            dgv.CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal;
+            dgv.RowTemplate.Height = 40;
         }
 
         private Button CreateNavButton(string text, int left)
@@ -659,9 +705,18 @@ namespace CarTechAssist.Desktop.WinForms.Forms
             {
                 _apiClient.SetAuth(session.Token, session.TenantId, session.UsuarioId);
             }
-            var chamadosForm = new ChamadosForm(_apiClient);
-            chamadosForm.Show();
-            this.Close();
+            NavigationGuard.Begin(NavigationReason.SwitchForm);
+            try
+            {
+                var chamadosForm = new ChamadosForm(_apiClient);
+                chamadosForm.Show();
+                this.Close();
+            }
+            catch
+            {
+                NavigationGuard.Reset();
+                throw;
+            }
         }
 
         private void DgvChamadosRecentes_CellDoubleClick(object? sender, DataGridViewCellEventArgs e)

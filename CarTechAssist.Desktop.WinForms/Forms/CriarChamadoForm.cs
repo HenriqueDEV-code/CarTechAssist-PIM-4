@@ -333,8 +333,8 @@ namespace CarTechAssist.Desktop.WinForms.Forms
             btnCancelar = new Button
             {
                 Text = "Cancelar",
-                Location = new Point(500, y),
-                Size = new Size(110, 40),
+                Location = new Point(470, y),
+                Size = new Size(140, 45),
                 BackColor = Color.FromArgb(108, 117, 125),
                 ForeColor = Color.White,
                 FlatStyle = FlatStyle.Flat,
@@ -348,9 +348,9 @@ namespace CarTechAssist.Desktop.WinForms.Forms
 
             btnCriar = new Button
             {
-                Text = "Criar Chamado",
+                Text = "Criar",
                 Location = new Point(620, y),
-                Size = new Size(110, 40),
+                Size = new Size(140, 45),
                 BackColor = Color.FromArgb(76, 175, 80),
                 ForeColor = Color.White,
                 FlatStyle = FlatStyle.Flat,

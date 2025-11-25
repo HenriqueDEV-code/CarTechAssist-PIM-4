@@ -310,10 +310,27 @@ namespace CarTechAssist.Desktop.WinForms.Forms
                     dashboard.Show();
                     System.Diagnostics.Debug.WriteLine($"✅ LoginForm - Dashboard mostrado");
                     
-                    // Quando o Dashboard fechar, fechar também o LoginForm
-                    dashboard.FormClosed += (s, e) => 
+                    // Quando o Dashboard fechar, decidir o que fazer baseado no motivo
+                    dashboard.FormClosed += (s, e) =>
                     {
-                        System.Diagnostics.Debug.WriteLine($"🔍 LoginForm - Dashboard fechado, fechando LoginForm");
+                        var isNavigating = NavigationGuard.IsNavigating;
+                        var reason = NavigationGuard.CurrentReason;
+                        if (isNavigating)
+                        {
+                            NavigationGuard.Reset();
+
+                            if (reason == NavigationReason.Logout && !this.IsDisposed)
+                            {
+                                ResetLoginState();
+                                this.Show();
+                                this.Activate();
+                            }
+
+                            System.Diagnostics.Debug.WriteLine($"🔍 LoginForm - Dashboard fechado durante navegação ({reason}). Mantendo LoginForm oculto? {!this.Visible}");
+                            return;
+                        }
+
+                        System.Diagnostics.Debug.WriteLine("🔍 LoginForm - Dashboard fechado pelo usuário. Encerrando aplicação.");
                         if (!this.IsDisposed)
                         {
                             this.Close();
@@ -343,6 +360,15 @@ namespace CarTechAssist.Desktop.WinForms.Forms
         {
             lblError.Text = message;
             lblError.Visible = true;
+        }
+
+        private void ResetLoginState()
+        {
+            txtSenha.Text = string.Empty;
+            txtLogin.Text = string.Empty;
+            lblError.Visible = false;
+            btnLogin.Enabled = true;
+            btnLogin.Text = "Login";
         }
     }
 }

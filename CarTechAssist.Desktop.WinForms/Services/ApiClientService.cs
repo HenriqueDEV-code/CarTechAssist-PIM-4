@@ -16,9 +16,19 @@ namespace CarTechAssist.Desktop.WinForms.Services
 
         public ApiClientService()
         {
-            _httpClient = new HttpClient
+            var baseUrl = Environment.GetEnvironmentVariable("CARTECHASSIST_API_BASEURL")
+                ?? "https://localhost:7294";
+
+            // Permitir certificados de desenvolvimento quando usando localhost
+            var handler = new HttpClientHandler();
+            if (baseUrl.Contains("localhost", StringComparison.OrdinalIgnoreCase))
             {
-                BaseAddress = new Uri("http://localhost:5167"),
+                handler.ServerCertificateCustomValidationCallback = (_, _, _, _) => true;
+            }
+
+            _httpClient = new HttpClient(handler)
+            {
+                BaseAddress = new Uri(baseUrl),
                 Timeout = TimeSpan.FromSeconds(30)
             };
 
