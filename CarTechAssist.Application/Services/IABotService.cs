@@ -440,7 +440,7 @@ namespace CarTechAssist.Application.Services
                 return new ProcessarMensagemResult
                 {
                     Sucesso = true,
-                    Mensagem = respostaIA.Mensagem,
+                    Mensagem = respostaIA.Mensagem ?? string.Empty,
                     StatusAtualizado = statusAtualizado,
                     NovoStatus = acoes.NovoStatus
                 };

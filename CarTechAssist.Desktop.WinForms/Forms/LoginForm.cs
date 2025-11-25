@@ -8,16 +8,16 @@ namespace CarTechAssist.Desktop.WinForms.Forms
     {
         private readonly ApiClientService _apiClient;
         private readonly AuthService _authService;
-        private Panel panelLeft;
-        private Panel panelRight;
-        private TextBox txtLogin;
-        private TextBox txtSenha;
-        private Button btnLogin;
-        private Label lblTitle;
-        private Label lblSubtitle;
-        private Label lblError;
-        private LinkLabel lnkForgotPassword;
-        private LinkLabel lnkRegister;
+        private Panel panelLeft = null!;
+        private Panel panelRight = null!;
+        private TextBox txtLogin = null!;
+        private TextBox txtSenha = null!;
+        private Button btnLogin = null!;
+        private Label lblTitle = null!;
+        private Label lblSubtitle = null!;
+        private Label lblError = null!;
+        private LinkLabel lnkForgotPassword = null!;
+        private LinkLabel lnkRegister = null!;
 
         // Inicializador do Formulário de Login
         public LoginForm()

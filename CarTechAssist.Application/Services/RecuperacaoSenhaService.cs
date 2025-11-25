@@ -80,6 +80,13 @@ namespace CarTechAssist.Application.Services
 
             _logger.LogInformation("✅ VALIDAÇÃO OK: Email corresponde para usuário {UsuarioId}", usuario.UsuarioId);
 
+            var emailConfirmado = usuario.Email;
+            if (string.IsNullOrWhiteSpace(emailConfirmado))
+            {
+                _logger.LogError("Email do usuário {UsuarioId} está nulo ou vazio após a validação", usuario.UsuarioId);
+                throw new InvalidOperationException("Não foi possível confirmar o email do usuário.");
+            }
+
             await _recuperacaoRepository.LimparExpiradasAsync(tenantId, ct);
 
             var codigoExistente = await _recuperacaoRepository.ObterPorUsuarioAsync(tenantId, usuario.UsuarioId, ct);
@@ -89,7 +96,7 @@ namespace CarTechAssist.Application.Services
                 _logger.LogInformation("Reutilizando código de recuperação existente para usuário {UsuarioId}", usuario.UsuarioId);
                 
                 var emailEnviado = await _emailService.EnviarCodigoRecuperacaoAsync(
-                    usuario.Email,
+                    emailConfirmado,
                     usuario.NomeCompleto,
                     codigoExistente.Codigo,
                     ct);
@@ -105,7 +112,7 @@ namespace CarTechAssist.Application.Services
                 TenantId = tenantId,
                 UsuarioId = usuario.UsuarioId,
                 Codigo = codigo,
-                Email = usuario.Email,
+                Email = emailConfirmado,
                 DataExpiracao = DateTime.UtcNow.AddMinutes(30),
                 Usado = false,
                 DataCriacao = DateTime.UtcNow
@@ -115,9 +122,9 @@ namespace CarTechAssist.Application.Services
             _logger.LogInformation("Código de recuperação salvo no banco. RecuperacaoSenhaId: {RecuperacaoId}, Código: {Codigo}", 
                 recuperacaoId, codigo);
 
-            _logger.LogInformation("Tentando enviar email de recuperação para {Email}", usuario.Email);
+            _logger.LogInformation("Tentando enviar email de recuperação para {Email}", emailConfirmado);
             var enviado = await _emailService.EnviarCodigoRecuperacaoAsync(
-                usuario.Email,
+                emailConfirmado,
                 usuario.NomeCompleto,
                 codigo,
                 ct);

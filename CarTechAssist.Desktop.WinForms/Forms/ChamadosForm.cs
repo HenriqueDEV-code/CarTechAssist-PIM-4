@@ -10,7 +10,6 @@ namespace CarTechAssist.Desktop.WinForms.Forms
         private readonly ApiClientService _apiClient;
         private readonly ChamadosService _chamadosService;
         private DataGridView dgvChamados = null!;
-        private Button btnVoltar = null!;
         private Button btnNovo = null!;
         private Button btnRefresh = null!;
         private Label lblTitle = null!;
